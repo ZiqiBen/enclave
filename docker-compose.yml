@@ -1,0 +1,101 @@
+# Stateful services only.
+#
+# Model inference deliberately runs NATIVE on the host, not in a
+# container, because Docker on macOS cannot reach the GPU (Docker Desktop
+# runs a Linux VM and Metal is not passed through). Containerising the
+# encoders would silently discard Apple Silicon acceleration and make the
+# reranker unusable on the Mac.
+#
+# The `release` profile adds the containerised app for the Linux target,
+# so production stays fully containerised without hurting laptop dev.
+#
+#   dev:      docker compose up -d db redis
+#   release:  docker compose --profile release up -d
+#
+# Ports are shifted off the defaults (5433, 6380) so this never collides
+# with a Postgres or Redis the developer already has installed.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: enclave
+      POSTGRES_PASSWORD: enclave
+      POSTGRES_DB: enclave
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once on an empty data directory. For an existing volume,
+      # apply migrations with `uv run enclave-migrate` instead.
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enclave -d enclave"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # HNSW index builds are memory-hungry; give the planner room.
+    command: >
+      postgres
+      -c maintenance_work_mem=512MB
+      -c shared_buffers=512MB
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: ["release"]
+    build: .
+    environment:
+      ENCLAVE_DATABASE_URL: postgresql://enclave:enclave@db:5432/enclave
+      ENCLAVE_REDIS_URL: redis://redis:6379/0
+      # Reachable from inside the container on Linux; on macOS/Windows use
+      # host.docker.internal if you ever run this profile locally.
+      ENCLAVE_OLLAMA_URL: http://host.docker.internal:11434
+      ENCLAVE_OFFLINE_ONLY: "1"
+      HF_HOME: /models
+    volumes:
+      # Weights are mounted, never downloaded at runtime.
+      - ${ENCLAVE_MODEL_CACHE:-./.models}:/models:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Egress test: same image, no route to the outside world.
+  #   docker compose --profile egress-test up --abort-on-container-exit
+  egress-test:
+    profiles: ["egress-test"]
+    build: .
+    command: ["python", "-m", "pytest", "tests/test_egress.py", "-v"]
+    environment:
+      ENCLAVE_DATABASE_URL: postgresql://enclave:enclave@db:5432/enclave
+      ENCLAVE_OFFLINE_ONLY: "1"
+      HF_HOME: /models
+    volumes:
+      - ${ENCLAVE_MODEL_CACHE:-./.models}:/models:ro
+    networks:
+      - isolated
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  # internal: true removes the default route. Any outbound connection
+  # attempt fails, which is exactly what the test asserts.
+  isolated:
+    internal: true
+
+volumes:
+  pgdata:

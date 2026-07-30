@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Model weights and caches -- never commit these. Multi-gigabyte binaries
+# in git history are unrecoverable without a rewrite.
+.models/
+*.safetensors
+*.gguf
+*.onnx
+
+# Corpora and derived artifacts
+data/
+corpora/
+*.duckdb
+*.parquet
+
+# Benchmark scratch. Curated result tables in benchmarks/*.md ARE
+# committed on purpose -- they are how performance regressions become
+# visible in a diff, since CI runners have no GPU to measure on.
+benchmarks/raw/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

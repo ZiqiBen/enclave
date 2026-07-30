@@ -1,0 +1,19 @@
+# Normalise line endings in the repository to LF.
+#
+# Without this, a Windows checkout commits CRLF, the macOS checkout sees a
+# whole-file diff, and any shell script copied into a Linux container
+# fails with a confusing "bad interpreter" error. This one file prevents
+# the most common cross-platform annoyance in a mixed Windows/macOS team.
+* text=auto eol=lf
+
+# Windows-only scripts genuinely need CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.pdf binary
+*.safetensors binary
+*.gguf binary
+*.onnx binary

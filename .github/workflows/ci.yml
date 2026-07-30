@@ -1,0 +1,104 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"   # nightly, so the macOS job runs daily without
+                          # burning minutes on every push
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  # The portability guarantee. Windows and macOS are first-class, not
+  # afterthoughts -- a platform-specific bug fails a build here rather
+  # than surfacing during a demo.
+  #
+  # IMPORTANT: hosted runners have no GPU, so this matrix proves
+  # CORRECTNESS everywhere, not speed. Latency is measured locally on both
+  # dev machines and committed to benchmarks/ so regressions show up in a
+  # diff. Do not let a green matrix imply a performance claim.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+          # macos-14 is arm64 (Apple Silicon). Private-repo minutes carry
+          # a multiplier, so restrict it to PRs into main and the nightly.
+          - os: macos-14
+    runs-on: ${{ matrix.os }}
+    if: >
+      matrix.os != 'macos-14' ||
+      github.event_name != 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+
+      # Device resolution must return something sane on every platform and
+      # must never raise. This is the whole cross-platform abstraction, so
+      # it gets asserted first.
+      - name: Resolve device
+        run: uv run python -c "from enclave.config import platform_tag; print(platform_tag())"
+
+      # Model-dependent tests are skipped: pulling ~2.5 GB of weights on
+      # three runners is not worth the minutes. Those run locally.
+      - run: uv run pytest -m "not models and not db and not egress"
+
+  # Hybrid retrieval is SQL, so it needs a real Postgres with pgvector.
+  # Linux only -- service containers are not available on macOS runners.
+  db-integration:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: enclave
+          POSTGRES_PASSWORD: enclave
+          POSTGRES_DB: enclave
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U enclave -d enclave"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+      - run: uv run enclave-migrate
+      # Uses a deterministic fake embedder so the SQL and RRF fusion are
+      # tested without downloading model weights.
+      - run: uv run pytest -m db
+
+  # The product guarantee, as a build step. Runs the stack on a Docker
+  # network with internal: true (no default route) and asserts both
+  # correct answers and zero outbound connection attempts.
+  egress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore model cache
+        uses: actions/cache@v4
+        with:
+          path: .models
+          key: enclave-models-v1
+      - name: Run egress-blocked suite
+        run: |
+          docker compose --profile egress-test up \
+            --abort-on-container-exit --exit-code-from egress-test
