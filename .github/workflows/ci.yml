@@ -81,7 +81,10 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
       - run: uv run enclave-migrate
-      - run: uv run pytest -m db
+      # "and not models" matters: TestEndToEndOffline carries db, models and
+      # egress markers at once, so a bare `-m db` selects it and it then
+      # tries to load 2.5 GB of weights that no runner has.
+      - run: uv run pytest -m "db and not models"
 
   # TODO(Sprint 4): container-level egress job.
   #
