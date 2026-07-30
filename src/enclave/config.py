@@ -123,12 +123,27 @@ class Settings(BaseSettings):
         return not self.is_accelerated
 
     @property
+    def vram_gb(self) -> float:
+        """Total VRAM on the resolved device, 0.0 when there is none."""
+        if self.resolved_device != "cuda":
+            return 0.0
+        import torch
+
+        return torch.cuda.get_device_properties(0).total_memory / 1024**3
+
+    @property
     def resolved_llm_model(self) -> str:
         if self.llm_model:
             return self.llm_model
-        # Llama 3.1 8B where there is VRAM to hold it, Qwen3 4B otherwise.
-        # Both are compared in Sprint 3; this is only the default.
-        return "llama3.1:8b-instruct-q4_K_M" if self.is_accelerated else "qwen3:4b"
+        # Having a GPU is not the same as having room for an 8B model.
+        # Llama-3.1-8B at Q4 is ~4.9 GB and the encoders want ~2.4 GB in
+        # fp16, so the two only coexist above roughly 10 GB of VRAM. On a
+        # 6 GB laptop card the 8B model either OOMs or evicts the encoders,
+        # which ends up slower than simply using the 4B model.
+        # Sprint 3 compares them properly; this is only the default.
+        if self.vram_gb >= 10:
+            return "llama3.1:8b-instruct-q4_K_M"
+        return "qwen3:4b"
 
     @property
     def torch_dtype(self):

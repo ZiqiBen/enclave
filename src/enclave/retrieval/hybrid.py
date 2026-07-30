@@ -22,9 +22,21 @@ rather than assumed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from enclave.config import settings
+
+
+def to_vector_literal(vec: Sequence[float]) -> str:
+    """pgvector's text input format, e.g. '[0.1,0.2,0.3]'.
+
+    Passing the literal rather than a numpy array means the function does
+    not depend on register_vector() having been called on the connection,
+    which keeps it usable from a bare psycopg connection in tests.
+    """
+    return "[" + ",".join(f"{float(x):.6f}" for x in vec) + "]"
+
 
 # RRF over two channels. Each contributes 1/(k + rank); documents found by
 # both accumulate both terms, which is the whole point.
@@ -104,7 +116,7 @@ def hybrid_search(conn, query: str, limit: int | None = None) -> list[Candidate]
             _HYBRID_SQL,
             {
                 "query": query,
-                "vec": vec.tolist(),
+                "vec": to_vector_literal(vec),
                 "k": cfg.candidates_k,
                 "rrf_k": cfg.rrf_k,
                 "limit": limit or cfg.resolved_rerank_depth,
@@ -148,6 +160,5 @@ def should_rerank(candidates: list[Candidate]) -> bool:
     relative_margin = (top - second) / top
     # A decisive stage 1 that both channels agree on is trustworthy.
     return not (
-        relative_margin >= cfg.conditional_rerank_margin
-        and candidates[0].found_by_both
+        relative_margin >= cfg.conditional_rerank_margin and candidates[0].found_by_both
     )

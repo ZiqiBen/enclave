@@ -29,8 +29,8 @@ from enclave.config import settings
 
 # Qwen3-Reranker chat scaffolding. Taken from the model card -- re-check it.
 _RERANK_SYSTEM = (
-    '<|im_start|>system\nJudge whether the Document meets the requirements '
-    'based on the Query and the Instruct provided. Note that the answer can '
+    "<|im_start|>system\nJudge whether the Document meets the requirements "
+    "based on the Query and the Instruct provided. Note that the answer can "
     'only be "yes" or "no".<|im_end|>\n<|im_start|>user\n'
 )
 _RERANK_ASSISTANT = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
