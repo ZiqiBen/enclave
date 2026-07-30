@@ -5,9 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: "0 6 * * *"   # nightly, so the macOS job runs daily without
-                          # burning minutes on every push
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,8 +21,13 @@ jobs:
       - run: uv run ruff format --check .
 
   # The portability guarantee. Windows and macOS are first-class, not
-  # afterthoughts -- a platform-specific bug fails a build here rather
-  # than surfacing during a demo.
+  # afterthoughts -- a platform-specific bug fails a build here rather than
+  # surfacing during a demo.
+  #
+  # macos-14 is arm64 (Apple Silicon). Standard runners are free for public
+  # repositories, so all three run on every push. If this repo ever goes
+  # private, restrict macOS with a dynamically built matrix -- the `matrix`
+  # context is NOT available in a job-level `if`, which is a parse error.
   #
   # IMPORTANT: hosted runners have no GPU, so this matrix proves
   # CORRECTNESS everywhere, not speed. Latency is measured locally on both
@@ -35,16 +37,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-          - os: windows-latest
-          # macos-14 is arm64 (Apple Silicon). Private-repo minutes carry
-          # a multiplier, so restrict it to PRs into main and the nightly.
-          - os: macos-14
+        os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
-    if: >
-      matrix.os != 'macos-14' ||
-      github.event_name != 'push'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -54,16 +48,21 @@ jobs:
 
       # Device resolution must return something sane on every platform and
       # must never raise. This is the whole cross-platform abstraction, so
-      # it gets asserted first.
+      # it gets asserted first and printed into the log.
       - name: Resolve device
         run: uv run python -c "from enclave.config import platform_tag; print(platform_tag())"
 
-      # Model-dependent tests are skipped: pulling ~2.5 GB of weights on
-      # three runners is not worth the minutes. Those run locally.
+      # Model-dependent tests are skipped: pulling ~2.5 GB of weights onto
+      # three runners is not worth the minutes, and those run locally.
+      #
+      # The socket-guard tests in tests/test_egress.py ARE unmarked and do
+      # run here -- they assert that no code path even attempts an outbound
+      # connection, which is the portable half of the zero-egress guarantee.
       - run: uv run pytest -m "not models and not db and not egress"
 
   # Hybrid retrieval is SQL, so it needs a real Postgres with pgvector.
-  # Linux only -- service containers are not available on macOS runners.
+  # Linux only: service containers are not available on macOS runners.
+  # Uses a deterministic fake embedder, so no model weights are needed.
   db-integration:
     runs-on: ubuntu-latest
     services:
@@ -82,23 +81,14 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
       - run: uv run enclave-migrate
-      # Uses a deterministic fake embedder so the SQL and RRF fusion are
-      # tested without downloading model weights.
       - run: uv run pytest -m db
 
-  # The product guarantee, as a build step. Runs the stack on a Docker
-  # network with internal: true (no default route) and asserts both
-  # correct answers and zero outbound connection attempts.
-  egress:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Restore model cache
-        uses: actions/cache@v4
-        with:
-          path: .models
-          key: enclave-models-v1
-      - name: Run egress-blocked suite
-        run: |
-          docker compose --profile egress-test up \
-            --abort-on-container-exit --exit-code-from egress-test
+  # TODO(Sprint 4): container-level egress job.
+  #
+  # `docker compose --profile egress-test up` runs the stack on a network
+  # with internal: true (no default route) and answers real queries. It
+  # needs two things that do not exist yet -- a Dockerfile, and a cached
+  # copy of the model weights -- so it is deliberately absent rather than
+  # present and permanently red.
+  #
+  # Until then the portable socket-guard tests above carry the guarantee.
