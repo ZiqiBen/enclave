@@ -122,13 +122,17 @@ class Reranker:
         # The two tokens whose logits become the score.
         self.no_id = self.tokenizer.convert_tokens_to_ids("no")
         self.yes_id = self.tokenizer.convert_tokens_to_ids("yes")
+        self.prefix_ids = self.tokenizer.encode(
+            _RERANK_SYSTEM, add_special_tokens=False
+        )
+        self.suffix_ids = self.tokenizer.encode(
+            _RERANK_ASSISTANT, add_special_tokens=False
+        )
         self._torch = torch
 
-    def _build_prompt(self, query: str, document: str, instruction: str) -> str:
-        return (
-            f"{_RERANK_SYSTEM}<Instruct>: {instruction}\n"
-            f"<Query>: {query}\n<Document>: {document}{_RERANK_ASSISTANT}"
-        )
+    @staticmethod
+    def _build_content(query: str, document: str, instruction: str) -> str:
+        return f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {document}"
 
     def score(
         self,
@@ -146,18 +150,29 @@ class Reranker:
             return []
 
         torch = self._torch
-        prompts = [self._build_prompt(query, d, instruction) for d in documents]
+        contents = [self._build_content(query, d, instruction) for d in documents]
         scores: list[float] = []
 
-        for start in range(0, len(prompts), batch_size):
-            batch = prompts[start : start + batch_size]
-            enc = self.tokenizer(
+        content_budget = self.max_tokens - len(self.prefix_ids) - len(self.suffix_ids)
+        if content_budget < 1:
+            raise ValueError("max passage tokens cannot fit reranker scaffolding")
+
+        for start in range(0, len(contents), batch_size):
+            batch = contents[start : start + batch_size]
+            encoded = self.tokenizer(
                 batch,
-                return_tensors="pt",
-                padding=True,
+                padding=False,
                 truncation=True,
-                max_length=self.max_tokens,
-            ).to(self.device)
+                max_length=content_budget,
+                return_attention_mask=False,
+            )
+            encoded["input_ids"] = [
+                self.prefix_ids + token_ids + self.suffix_ids
+                for token_ids in encoded["input_ids"]
+            ]
+            enc = self.tokenizer.pad(encoded, padding=True, return_tensors="pt").to(
+                self.device
+            )
 
             with torch.no_grad():
                 logits = self.model(**enc).logits[:, -1, :]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -10,6 +12,9 @@ from pydantic import BaseModel, ConfigDict
 
 from enclave.config import settings
 from enclave.retrieval.hybrid import Candidate
+
+_INLINE_CITATION = re.compile(r"\[(E\d+)\]")
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+(?!\[E\d+\])")
 
 
 class _ModelAnswer(BaseModel):
@@ -91,7 +96,32 @@ class OllamaClient:
         )
 
 
-def _prompt(query: str, evidence: list[Candidate]) -> str:
+def _normalize_inline_citations(text: str, citation_ids: list[str]) -> str:
+    """Attach declared citations to uncited claims for deterministic checking.
+
+    Small local models occasionally populate ``citation_ids`` correctly but
+    omit the same marker from the answer text. Attaching all declared evidence
+    to an uncited sentence lets the verifier judge that sentence; it does not
+    make the sentence trusted or supported by itself.
+    """
+    declared = tuple(dict.fromkeys(citation_ids))
+    declared_set = set(declared)
+    inline = set(_INLINE_CITATION.findall(text))
+    undeclared = inline - declared_set
+    if undeclared:
+        raise ValueError(f"answer used undeclared citations: {sorted(undeclared)}")
+
+    suffix = "".join(f"[{item}]" for item in declared)
+    sentences = [
+        part.strip() for part in _SENTENCE_BOUNDARY.split(text) if part.strip()
+    ]
+    return " ".join(
+        sentence if _INLINE_CITATION.search(sentence) else f"{sentence} {suffix}"
+        for sentence in sentences
+    )
+
+
+def _prompt(query: str, evidence: list[Candidate], schema: dict[str, object]) -> str:
     passages = []
     for index, candidate in enumerate(evidence, start=1):
         heading = candidate.heading_path or "Untitled section"
@@ -104,10 +134,16 @@ def _prompt(query: str, evidence: list[Candidate]) -> str:
 
 Rules:
 - Do not use outside knowledge or invent facts.
+- Answer the question directly. Do not repeat or paraphrase the question as the
+  answer.
 - Preserve negation and restrictions exactly. For a yes/no question, begin with
   "Yes" only when the evidence supports the proposition in the question;
   otherwise begin with "No".
-- Cite every factual claim with evidence IDs such as [E1].
+- End every sentence containing a factual claim with one or more evidence IDs,
+  such as [E1]. Do not place one citation only at the end of a multi-sentence
+  paragraph.
+- Every non-refusal answer must contain at least one inline [E#] citation and
+  citation_ids must list those same IDs.
 - Return only JSON matching the supplied schema.
 - citation_ids must contain every evidence ID used in the answer.
 - If the evidence cannot answer the question, set insufficient_evidence to true,
@@ -118,6 +154,15 @@ Question:
 
 Evidence:
 {context}
+
+Output JSON schema:
+{json.dumps(schema)}
+
+Example output shape:
+{{"answer":"A direct answer supported by the evidence [E1].",\
+"citation_ids":["E1"],"insufficient_evidence":false}}
+
+Now answer the question. Return JSON only.
 """
 
 
@@ -138,8 +183,9 @@ def generate_answer(
             model=None,
         )
 
+    schema = _ModelAnswer.model_json_schema()
     generation = (client or OllamaClient()).generate(
-        prompt=_prompt(query, list(evidence)), schema=_ModelAnswer.model_json_schema()
+        prompt=_prompt(query, list(evidence), schema), schema=schema
     )
     parsed = _ModelAnswer.model_validate_json(generation.content)
 
@@ -149,6 +195,12 @@ def generate_answer(
         raise ValueError(f"model cited unknown evidence: {sorted(unknown)}")
     if parsed.insufficient_evidence and parsed.citation_ids:
         raise ValueError("an insufficient-evidence answer must not include citations")
+    if not parsed.insufficient_evidence and not parsed.citation_ids:
+        raise ValueError("a grounded answer must include citations")
+
+    answer_text = parsed.answer
+    if not parsed.insufficient_evidence:
+        answer_text = _normalize_inline_citations(answer_text, parsed.citation_ids)
 
     citations = tuple(
         Citation(
@@ -160,7 +212,7 @@ def generate_answer(
         for evidence_id in dict.fromkeys(parsed.citation_ids)
     )
     return Answer(
-        text=parsed.answer,
+        text=answer_text,
         citations=citations,
         insufficient_evidence=parsed.insufficient_evidence,
         model=generation.model,

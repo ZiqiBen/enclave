@@ -117,20 +117,35 @@ def ingest_path(
     paths = discover_documents(root)
     stats = IngestStats(files_seen=len(paths))
 
+    prepared = []
     for path in paths:
         try:
             parsed = parse_document(path)
             chunks = chunk_document(
                 parsed, max_words=max_words, overlap_words=overlap_words
             )
-            vectors = None
-            if embedder is not None and chunks:
-                vectors = embedder.encode_documents(
-                    [chunk.content for chunk in chunks], batch_size=batch_size
-                )
-                if len(vectors) != len(chunks):
-                    raise ValueError("embedder returned the wrong number of vectors")
+            prepared.append((path, parsed, chunks))
+        except Exception:
+            stats.failures += 1
+            if not continue_on_error:
+                raise
 
+    all_chunks = [chunk for _, _, chunks in prepared for chunk in chunks]
+    all_vectors = None
+    if embedder is not None and all_chunks:
+        all_vectors = embedder.encode_documents(
+            [chunk.content for chunk in all_chunks], batch_size=batch_size
+        )
+        if len(all_vectors) != len(all_chunks):
+            raise ValueError("embedder returned the wrong number of vectors")
+
+    vector_offset = 0
+    for path, parsed, chunks in prepared:
+        try:
+            vectors = None
+            if all_vectors is not None:
+                vectors = all_vectors[vector_offset : vector_offset + len(chunks)]
+            vector_offset += len(chunks)
             relative_path = _source_path(path, root)
             written, duplicates = _write_document(
                 conn,

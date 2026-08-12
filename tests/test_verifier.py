@@ -63,6 +63,18 @@ def test_supported_claim_passes_and_uses_only_its_citation():
     assert batch_size == 1
 
 
+def test_citation_after_sentence_punctuation_stays_with_claim():
+    result = verify_answer(
+        answer("Documents cannot be uploaded. [E1]"),
+        [evidence()],
+        verifier=FakeVerifier([[0.99]]),
+        threshold=0.8,
+    )
+    assert result.verified is True
+    assert len(result.claims) == 1
+    assert result.claims[0].citation_ids == ("E1",)
+
+
 def test_low_support_score_fails_the_answer():
     result = verify_answer(
         answer("Yes, documents can be uploaded [E1]."),

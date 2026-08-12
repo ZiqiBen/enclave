@@ -84,6 +84,18 @@ def test_rejects_citations_on_insufficient_answer():
         generate_answer("Question?", [evidence()], client=client)
 
 
+def test_rejects_grounded_answer_without_citations():
+    client = FakeClient(
+        {
+            "answer": "Unsupported answer.",
+            "citation_ids": [],
+            "insufficient_evidence": False,
+        }
+    )
+    with pytest.raises(ValueError, match="must include citations"):
+        generate_answer("Question?", [evidence()], client=client)
+
+
 def test_duplicate_citations_are_resolved_once():
     client = FakeClient(
         {
@@ -94,6 +106,44 @@ def test_duplicate_citations_are_resolved_once():
     )
     answer = generate_answer("Question?", [evidence()], client=client)
     assert [citation.evidence_id for citation in answer.citations] == ["E1"]
+
+
+def test_declared_citation_is_attached_to_uncited_answer_sentence():
+    client = FakeClient(
+        {
+            "answer": "PostgreSQL is a relational database management system.",
+            "citation_ids": ["E1"],
+            "insufficient_evidence": False,
+        }
+    )
+    answer = generate_answer("What is PostgreSQL?", [evidence()], client=client)
+    assert answer.text == (
+        "PostgreSQL is a relational database management system. [E1]"
+    )
+
+
+def test_declared_citations_are_attached_to_each_uncited_sentence():
+    client = FakeClient(
+        {
+            "answer": "First claim. Second claim.",
+            "citation_ids": ["E1"],
+            "insufficient_evidence": False,
+        }
+    )
+    answer = generate_answer("Question?", [evidence()], client=client)
+    assert answer.text == "First claim. [E1] Second claim. [E1]"
+
+
+def test_rejects_inline_citation_missing_from_declared_ids():
+    client = FakeClient(
+        {
+            "answer": "Mismatched citation [E2].",
+            "citation_ids": ["E1"],
+            "insufficient_evidence": False,
+        }
+    )
+    with pytest.raises(ValueError, match="undeclared citations"):
+        generate_answer("Question?", [evidence()], client=client)
 
 
 def test_rejects_empty_query():

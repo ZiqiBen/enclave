@@ -106,6 +106,35 @@ class TestDiscovery:
             discover_documents(path)
 
 
+def test_embeddings_are_batched_across_documents(tmp_path: Path, monkeypatch):
+    (tmp_path / "a.txt").write_text("alpha document", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("beta document", encoding="utf-8")
+
+    class Embedder:
+        calls: list[tuple[list[str], int]] = []
+
+        def encode_documents(self, texts, batch_size=16):
+            self.calls.append((texts, batch_size))
+            return [[0.0] * 256 for _ in texts]
+
+    class Connection:
+        pass
+
+    embedder = Embedder()
+    from enclave.ingest import pipeline
+
+    monkeypatch.setattr(
+        pipeline,
+        "_write_document",
+        lambda *args, **kwargs: (len(kwargs["chunks"]), 0),
+    )
+    stats = ingest_path(tmp_path, conn=Connection(), embedder=embedder, batch_size=7)
+
+    assert stats.files_ingested == 2
+    assert len(embedder.calls) == 1
+    assert embedder.calls[0] == (["alpha document", "beta document"], 7)
+
+
 @pytest.mark.db
 class TestPersistence:
     def test_ingests_and_replaces_a_document_idempotently(

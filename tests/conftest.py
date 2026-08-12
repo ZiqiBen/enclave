@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import uuid
 
 import numpy as np
 import pytest
@@ -63,8 +64,10 @@ def fake_embedder(monkeypatch):
 
 @pytest.fixture
 def db_conn():
-    """A migrated, empty database. Skips cleanly when Postgres is absent."""
+    """An isolated migrated schema. Never touches development data."""
     psycopg = pytest.importorskip("psycopg")
+    from psycopg import sql
+
     from enclave import db
 
     try:
@@ -72,11 +75,24 @@ def db_conn():
     except psycopg.OperationalError as exc:  # pragma: no cover
         pytest.skip(f"Postgres not reachable: {exc}")
 
-    db.reset(conn)
-    db.migrate(conn)
-    yield conn
-    db.reset(conn)
-    conn.close()
+    schema = f"enclave_test_{uuid.uuid4().hex}"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+            cur.execute(
+                sql.SQL("SET search_path TO {}, public").format(sql.Identifier(schema))
+            )
+        db.migrate(conn)
+        yield conn
+    finally:
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO public")
+            cur.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema)
+                )
+            )
+        conn.close()
 
 
 @pytest.fixture

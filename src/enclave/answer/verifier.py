@@ -10,7 +10,9 @@ from enclave.answer.service import Answer
 from enclave.retrieval.hybrid import Candidate
 
 _CITATION = re.compile(r"\[(E\d+)\]")
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+")
+# A model commonly writes "claim. [E1]". The citation still belongs to that
+# claim, so do not split on whitespace when an evidence marker follows.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+(?!\[E\d+\])")
 _VERIFY_INSTRUCTION = (
     "Determine whether the cited document directly supports the claim. "
     "Preserve negation, quantities, and restrictions exactly."
