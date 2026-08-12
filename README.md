@@ -104,15 +104,17 @@ src/enclave/
   config.py                 profiles + device resolution (the whole platform abstraction)
   models/encoders.py        Qwen3 embedder & reranker wrappers
   retrieval/hybrid.py       RRF over Postgres FTS + pgvector, in one SQL statement
-  ingest/                   parse → structure-aware chunk → dedup → embed     [TODO]
-  rank/                     rerank orchestration                              [TODO]
-  answer/                   synthesis + reranker-based verifier               [TODO]
-  api/                      FastAPI routes                                    [TODO]
+  ingest/                   parse → structure-aware chunk → dedup → embed
+  rank/                     conditional rerank orchestration
+  answer/                   grounded synthesis + claim-level verification
+  api/                      health, search, query, and feedback routes
   eval/                     BEIR harness, ablations, index benchmark          [TODO]
 benchmarks/                 committed result tables (regressions visible in diffs)
 ```
 
-`[TODO]` modules are intentionally unwritten. The scaffold provides the pieces where the API is non-obvious or a design decision is encoded; the rest is the build.
+The evaluation module remains to be built. Real embedding and reranker
+integration requires locally cached weights; tests use deterministic fakes so
+CI never downloads models. Ollama synthesis has been verified locally.
 
 ## Notes worth reading before Sprint 1
 

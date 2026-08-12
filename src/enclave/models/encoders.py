@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 
@@ -47,6 +48,10 @@ def _enforce_offline() -> None:
     access and fail loudly if the local cache is cold -- which is what we
     want, rather than a silent download in production.
     """
+    # `uv run` does not export arbitrary keys from .env into os.environ.
+    # Give native development the documented project-local cache by default;
+    # release containers explicitly set HF_HOME=/models and win via setdefault.
+    os.environ.setdefault("HF_HOME", str(Path(".models").resolve()))
     if settings().offline_only:
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -64,9 +69,9 @@ class Embedder:
         self.model = SentenceTransformer(
             model_name or cfg.embed_model,
             device=cfg.resolved_device,
-            model_kwargs={"torch_dtype": cfg.torch_dtype},
+            model_kwargs={"dtype": cfg.torch_dtype},
             # Qwen3-Embedding pools the last token, so padding must be left.
-            tokenizer_kwargs={"padding_side": "left"},
+            processor_kwargs={"padding_side": "left"},
             truncate_dim=self.dim,  # Matryoshka: 1024 -> self.dim
         )
 
@@ -110,7 +115,7 @@ class Reranker:
 
         self.tokenizer = AutoTokenizer.from_pretrained(name, padding_side="left")
         self.model = (
-            AutoModelForCausalLM.from_pretrained(name, torch_dtype=cfg.torch_dtype)
+            AutoModelForCausalLM.from_pretrained(name, dtype=cfg.torch_dtype)
             .to(self.device)
             .eval()
         )
