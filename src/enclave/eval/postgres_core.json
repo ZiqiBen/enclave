@@ -1,0 +1,43 @@
+[
+  {
+    "query": "What is PostgreSQL?",
+    "relevant_terms": ["relational database management system"]
+  },
+  {
+    "query": "What is a PostgreSQL database cluster?",
+    "relevant_terms": ["database cluster"]
+  },
+  {
+    "query": "How do I create a new database?",
+    "relevant_terms": ["CREATE DATABASE", "createdb"]
+  },
+  {
+    "query": "When should I use a GIN index?",
+    "relevant_terms": ["GIN index", "Generalized Inverted Index"]
+  },
+  {
+    "query": "How does PostgreSQL full text search turn text into tokens?",
+    "relevant_terms": ["tsvector", "parsing documents"]
+  },
+  {
+    "query": "What transaction isolation levels does PostgreSQL support?",
+    "relevant_terms": ["transaction isolation", "read committed", "serializable"]
+  },
+  {
+    "query": "How does VACUUM reclaim storage?",
+    "relevant_terms": ["VACUUM", "dead row"]
+  },
+  {
+    "query": "How can I inspect a SQL query execution plan?",
+    "relevant_terms": ["EXPLAIN", "execution plan"]
+  },
+  {
+    "query": "What is MVCC in PostgreSQL?",
+    "relevant_terms": ["multiversion concurrency control", "MVCC"]
+  },
+  {
+    "query": "What is the weather on Mars tomorrow?",
+    "relevant_terms": [],
+    "answerable": false
+  }
+]

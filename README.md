@@ -108,13 +108,20 @@ src/enclave/
   rank/                     conditional rerank orchestration
   answer/                   grounded synthesis + claim-level verification
   api/                      health, search, query, and feedback routes
-  eval/                     BEIR harness, ablations, index benchmark          [TODO]
+  eval/                     golden question set + quality/latency harness
 benchmarks/                 committed result tables (regressions visible in diffs)
 ```
 
-The evaluation module remains to be built. Real embedding and reranker
-integration requires locally cached weights; tests use deterministic fakes so
-CI never downloads models. Ollama synthesis has been verified locally.
+The first evaluation harness measures retrieval hit rate, MRR, NDCG@10,
+reranking frequency, and latency against a human-reviewed question set:
+
+```bash
+uv run enclave-eval --output benchmarks/raw/postgres-core.json
+```
+
+Real embedding and reranker integration requires locally cached weights; tests
+use deterministic fakes so CI never downloads models. Ollama synthesis has been
+verified locally.
 
 ## Notes worth reading before Sprint 1
 
