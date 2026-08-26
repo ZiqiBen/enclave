@@ -60,6 +60,21 @@ uv run enclave-ingest ./corpora/postgres-docs
 uv run enclave-api
 ```
 
+The query response includes server-side stage timings so local deployments can
+be tuned without guessing:
+
+```json
+{
+  "timings": {
+    "retrieval_ms": 408.2,
+    "rerank_ms": 0.0,
+    "generation_ms": 2033.1,
+    "verification_ms": 576.7,
+    "total_ms": 3018.1
+  }
+}
+```
+
 ### Windows with an NVIDIA GPU
 
 The PyPI `torch` wheel is CPU-only on Windows, so CUDA is an explicit extra step. This asymmetry is intentional — the default install yields the `portable` profile everywhere.
@@ -112,7 +127,8 @@ src/enclave/
 benchmarks/                 committed result tables (regressions visible in diffs)
 ```
 
-The first evaluation harness measures retrieval hit rate, MRR, NDCG@10,
+The evaluation harness compares lexical-only, dense-only, hybrid, selective
+reranking, and always-rerank retrieval. It measures hit rate, MRR, NDCG@10,
 reranking frequency, and latency against a human-reviewed question set:
 
 ```bash

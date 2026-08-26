@@ -81,6 +81,44 @@ ORDER BY f.score DESC
 LIMIT %(limit)s;
 """
 
+_LEXICAL_SQL = """
+WITH ranked AS (
+    SELECT c.id,
+           ROW_NUMBER() OVER (
+               ORDER BY ts_rank_cd(
+                   c.tsv, websearch_to_tsquery('english', %(query)s)
+               ) DESC
+           ) AS rnk
+    FROM chunks c
+    WHERE c.tsv @@ websearch_to_tsquery('english', %(query)s)
+    ORDER BY ts_rank_cd(
+        c.tsv, websearch_to_tsquery('english', %(query)s)
+    ) DESC
+    LIMIT %(limit)s
+)
+SELECT r.id, 1.0 / (%(rrf_k)s + r.rnk), r.rnk, NULL,
+       c.doc_id, c.heading_path, c.content
+FROM ranked r
+JOIN chunks c ON c.id = r.id
+ORDER BY r.rnk;
+"""
+
+_DENSE_SQL = """
+WITH ranked AS (
+    SELECT c.id,
+           ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(vec)s::vector) AS rnk
+    FROM chunks c
+    WHERE c.embedding IS NOT NULL
+    ORDER BY c.embedding <=> %(vec)s::vector
+    LIMIT %(limit)s
+)
+SELECT r.id, 1.0 / (%(rrf_k)s + r.rnk), NULL, r.rnk,
+       c.doc_id, c.heading_path, c.content
+FROM ranked r
+JOIN chunks c ON c.id = r.id
+ORDER BY r.rnk;
+"""
+
 
 @dataclass(slots=True)
 class Candidate:
@@ -98,6 +136,48 @@ class Candidate:
         """Channel agreement. Disagreements are the interesting cases --
         they become hard negatives for Sprint 4 mining."""
         return self.lex_rank is not None and self.dense_rank is not None
+
+
+def _candidates(rows) -> list[Candidate]:
+    return [
+        Candidate(
+            chunk_id=row[0],
+            fusion_score=float(row[1]),
+            lex_rank=row[2],
+            dense_rank=row[3],
+            doc_id=row[4],
+            heading_path=row[5],
+            content=row[6],
+        )
+        for row in rows
+    ]
+
+
+def lexical_search(conn, query: str, limit: int = 10) -> list[Candidate]:
+    """Postgres full-text retrieval alone, used as an evaluation baseline."""
+    with conn.cursor() as cur:
+        cur.execute(
+            _LEXICAL_SQL,
+            {"query": query, "limit": limit, "rrf_k": settings().rrf_k},
+        )
+        return _candidates(cur.fetchall())
+
+
+def dense_search(conn, query: str, limit: int = 10) -> list[Candidate]:
+    """pgvector retrieval alone, used as an evaluation baseline."""
+    from enclave.models.encoders import get_embedder
+
+    vec = get_embedder().encode_queries([query])[0]
+    with conn.cursor() as cur:
+        cur.execute(
+            _DENSE_SQL,
+            {
+                "vec": to_vector_literal(vec),
+                "limit": limit,
+                "rrf_k": settings().rrf_k,
+            },
+        )
+        return _candidates(cur.fetchall())
 
 
 def hybrid_search(conn, query: str, limit: int | None = None) -> list[Candidate]:
@@ -124,41 +204,22 @@ def hybrid_search(conn, query: str, limit: int | None = None) -> list[Candidate]
         )
         rows = cur.fetchall()
 
-    return [
-        Candidate(
-            chunk_id=r[0],
-            fusion_score=float(r[1]),
-            lex_rank=r[2],
-            dense_rank=r[3],
-            doc_id=r[4],
-            heading_path=r[5],
-            content=r[6],
-        )
-        for r in rows
-    ]
+    return _candidates(rows)
 
 
 def should_rerank(candidates: list[Candidate]) -> bool:
     """Conditional reranking -- the cheapest large latency win.
 
-    When stage 1 already separates the top result clearly, stage 2 rarely
-    changes the ordering, so a cross-encoder pass over N passages is
-    wasted. Most queries in a documentation corpus are easy.
-
-    The margin threshold is a tunable that Sprint 2 measures: report how
-    often reranking is skipped and what it costs in NDCG@10.
+    RRF scores are sums of reciprocal ranks, so adjacent scores are naturally
+    close and a conventional score-margin rule almost never fires. Instead,
+    trust the top fused result when either underlying channel independently
+    ranked it first. If neither channel did, the fusion order is uncertain and
+    the cross-encoder earns its cost.
     """
     cfg = settings()
     if not cfg.resolved_conditional_rerank:
         return True
-    if len(candidates) < 2:
+    if not candidates:
         return False
-
-    top, second = candidates[0].fusion_score, candidates[1].fusion_score
-    if top <= 0:
-        return True
-    relative_margin = (top - second) / top
-    # A decisive stage 1 that both channels agree on is trustworthy.
-    return not (
-        relative_margin >= cfg.conditional_rerank_margin and candidates[0].found_by_both
-    )
+    top = candidates[0]
+    return top.lex_rank != 1 and top.dense_rank != 1

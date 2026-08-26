@@ -43,6 +43,8 @@ class VerifiedAnswer:
     answer: Answer
     claims: tuple[ClaimVerification, ...]
     verified: bool
+    generation_duration_ms: float | None = None
+    verification_duration_ms: float | None = None
 
 
 def _claims(text: str) -> list[str]:

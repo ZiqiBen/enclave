@@ -1,5 +1,6 @@
 """FastAPI application exposing Enclave's retrieval and answer pipeline."""
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Literal, Protocol
@@ -50,11 +51,20 @@ class EvidenceResponse(BaseModel):
     dense_rank: int | None
 
 
+class TimingResponse(BaseModel):
+    retrieval_ms: float | None
+    rerank_ms: float | None
+    generation_ms: float | None = None
+    verification_ms: float | None = None
+    total_ms: float
+
+
 class SearchResponse(BaseModel):
     query: str
     evidence: list[EvidenceResponse]
     reranked: bool
     retrieved_count: int
+    timings: TimingResponse
 
 
 class CitationResponse(BaseModel):
@@ -171,18 +181,27 @@ def create_app(services: Services | None = None) -> FastAPI:
     @app.post("/v1/search", response_model=SearchResponse)
     def search(body: QueryRequest, conn: Connection) -> SearchResponse:
         runner = app.state.services.search or _default_search
+        started = time.perf_counter()
         ranked = runner(conn, body.query, body.top_k)
+        total_ms = (time.perf_counter() - started) * 1000
         return SearchResponse(
             query=body.query,
             evidence=_evidence(ranked),
             reranked=ranked.reranked,
             retrieved_count=ranked.retrieved_count,
+            timings=TimingResponse(
+                retrieval_ms=ranked.retrieval_duration_ms,
+                rerank_ms=ranked.rerank_duration_ms,
+                total_ms=total_ms,
+            ),
         )
 
     @app.post("/v1/query", response_model=QueryResponse)
     def query(body: QueryRequest, conn: Connection) -> QueryResponse:
         runner = app.state.services.query or _default_query
+        started = time.perf_counter()
         ranked, verified = runner(conn, body.query, body.top_k)
+        total_ms = (time.perf_counter() - started) * 1000
         answer = verified.answer
         duration = (
             answer.total_duration_ns / 1_000_000
@@ -194,6 +213,13 @@ def create_app(services: Services | None = None) -> FastAPI:
             evidence=_evidence(ranked),
             reranked=ranked.reranked,
             retrieved_count=ranked.retrieved_count,
+            timings=TimingResponse(
+                retrieval_ms=ranked.retrieval_duration_ms,
+                rerank_ms=ranked.rerank_duration_ms,
+                generation_ms=verified.generation_duration_ms,
+                verification_ms=verified.verification_duration_ms,
+                total_ms=total_ms,
+            ),
             answer=answer.text,
             citations=[
                 CitationResponse(

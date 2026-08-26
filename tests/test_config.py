@@ -121,28 +121,26 @@ class TestConditionalRerank:
             dense_rank=dense,
         )
 
-    def test_decisive_agreed_top_hit_skips_reranking(self, monkeypatch):
+    def test_channel_winner_skips_reranking(self, monkeypatch):
         from enclave.retrieval import hybrid
 
         monkeypatch.setattr(hybrid, "settings", lambda: Settings(profile="portable"))
-        cands = [self._candidate(1.0, 1, 1), self._candidate(0.4, 2, 2)]
+        cands = [self._candidate(1.0, 3, 1), self._candidate(0.99, 1, 2)]
         assert hybrid.should_rerank(cands) is False
 
-    def test_close_scores_still_get_reranked(self, monkeypatch):
+    def test_top_hit_that_won_neither_channel_gets_reranked(self, monkeypatch):
         from enclave.retrieval import hybrid
 
         monkeypatch.setattr(hybrid, "settings", lambda: Settings(profile="portable"))
-        cands = [self._candidate(1.0, 1, 1), self._candidate(0.95, 2, 2)]
+        cands = [self._candidate(1.0, 3, 2), self._candidate(0.95, 1, 4)]
         assert hybrid.should_rerank(cands) is True
 
-    def test_single_channel_top_hit_is_not_trusted(self, monkeypatch):
-        """A decisive score from only one channel is exactly the case where
-        the cross-encoder earns its cost."""
+    def test_lexical_winner_without_dense_match_is_trusted(self, monkeypatch):
         from enclave.retrieval import hybrid
 
         monkeypatch.setattr(hybrid, "settings", lambda: Settings(profile="portable"))
         cands = [self._candidate(1.0, 1, None), self._candidate(0.2, None, 1)]
-        assert hybrid.should_rerank(cands) is True
+        assert hybrid.should_rerank(cands) is False
 
     def test_accelerated_profile_always_reranks(self, monkeypatch):
         from enclave.retrieval import hybrid

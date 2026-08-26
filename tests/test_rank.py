@@ -73,7 +73,10 @@ def test_equal_scores_preserve_original_rrf_order():
 
 def test_empty_candidates_never_load_reranker():
     result = rank_candidates("question", [], force=True)
-    assert result == result.__class__((), False, 0)
+    assert result.candidates == ()
+    assert result.reranked is False
+    assert result.retrieved_count == 0
+    assert result.rerank_duration_ms == 0.0
 
 
 def test_rejects_wrong_score_count():
@@ -98,7 +101,7 @@ def test_retrieves_then_reranks_real_database_candidates(
     reranker = FakeReranker([0.1, 0.9, 0.5])
 
     result = retrieve_and_rank(
-        db_conn, seeded_corpus["query"], limit=2, reranker=reranker
+        db_conn, seeded_corpus["query"], limit=2, reranker=reranker, force=True
     )
 
     assert result.reranked is True

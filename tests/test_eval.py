@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from enclave.eval.run import EvalCase, load_cases, score_case, summarize
+from enclave.eval.run import EvalCase, load_cases, run_pipeline, score_case, summarize
 from enclave.rank import RankedEvidence
 from enclave.retrieval.hybrid import Candidate
 
@@ -50,6 +50,7 @@ def test_summary_reports_quality_and_latency():
     assert summary["hit_rate"] == 0.5
     assert summary["mrr"] == 0.5
     assert summary["mean_latency_ms"] == 20
+    assert summary["warm_mean_latency_ms"] == 30
     assert summary["p95_latency_ms"] == 30
 
 
@@ -59,3 +60,23 @@ def test_load_cases_rejects_answerable_case_without_terms(tmp_path):
 
     with pytest.raises(ValueError, match="no relevance terms"):
         load_cases(dataset)
+
+
+@pytest.mark.parametrize(
+    ("mode", "reranked"),
+    [
+        ("lexical", False),
+        ("dense", False),
+        ("hybrid", False),
+        ("selective-rerank", False),
+    ],
+)
+def test_ablation_modes_do_not_rerank(monkeypatch, mode, reranked):
+    candidates = [candidate(1, "evidence")]
+    monkeypatch.setattr("enclave.eval.run.lexical_search", lambda *a, **k: candidates)
+    monkeypatch.setattr("enclave.eval.run.dense_search", lambda *a, **k: candidates)
+    monkeypatch.setattr("enclave.eval.run.hybrid_search", lambda *a, **k: candidates)
+
+    result = run_pipeline(object(), "question", mode, 1)
+
+    assert result.reranked is reranked

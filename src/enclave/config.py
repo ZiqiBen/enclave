@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     rerank_depth: int = 0  # 0 -> profile default
     max_passage_tokens: int = 0  # 0 -> profile default
     conditional_rerank: bool | None = None  # None -> profile default
-    # Skip stage 2 when the lexical/dense fusion is already decisive.
-    conditional_rerank_margin: float = 0.35
-
     # --- infrastructure -----------------------------------------------
     database_url: str = "postgresql://enclave:enclave@127.0.0.1:5433/enclave"
     redis_url: str = "redis://127.0.0.1:6380/0"

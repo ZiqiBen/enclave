@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -19,6 +20,8 @@ class RankedEvidence:
     candidates: tuple[Candidate, ...]
     reranked: bool
     retrieved_count: int
+    retrieval_duration_ms: float | None = None
+    rerank_duration_ms: float | None = None
 
 
 def rank_candidates(
@@ -43,16 +46,23 @@ def rank_candidates(
     retrieved_count = len(candidates)
     run_reranker = force if force is not None else should_rerank(candidates)
     if not candidates or not run_reranker:
-        return RankedEvidence(tuple(candidates[:limit]), False, retrieved_count)
+        return RankedEvidence(
+            tuple(candidates[:limit]),
+            False,
+            retrieved_count,
+            rerank_duration_ms=0.0,
+        )
 
     if reranker is None:
         from enclave.models.encoders import get_reranker
 
         reranker = get_reranker()
 
+    started = time.perf_counter()
     scores = reranker.score(
         query, [candidate.content for candidate in candidates], batch_size=batch_size
     )
+    rerank_duration_ms = (time.perf_counter() - started) * 1000
     if len(scores) != len(candidates):
         raise ValueError("reranker returned the wrong number of scores")
 
@@ -63,7 +73,12 @@ def rank_candidates(
     ordered = sorted(
         candidates, key=lambda candidate: candidate.rerank_score, reverse=True
     )
-    return RankedEvidence(tuple(ordered[:limit]), True, retrieved_count)
+    return RankedEvidence(
+        tuple(ordered[:limit]),
+        True,
+        retrieved_count,
+        rerank_duration_ms=rerank_duration_ms,
+    )
 
 
 def retrieve_and_rank(
@@ -73,13 +88,24 @@ def retrieve_and_rank(
     limit: int = 10,
     batch_size: int = 8,
     reranker: CandidateReranker | None = None,
+    force: bool | None = None,
 ) -> RankedEvidence:
     """Run hybrid retrieval followed by conditional stage-two reranking."""
+    started = time.perf_counter()
     candidates = hybrid_search(conn, query)
-    return rank_candidates(
+    retrieval_duration_ms = (time.perf_counter() - started) * 1000
+    ranked = rank_candidates(
         query,
         candidates,
         reranker=reranker,
         limit=limit,
         batch_size=batch_size,
+        force=force,
+    )
+    return RankedEvidence(
+        candidates=ranked.candidates,
+        reranked=ranked.reranked,
+        retrieved_count=ranked.retrieved_count,
+        retrieval_duration_ms=retrieval_duration_ms,
+        rerank_duration_ms=ranked.rerank_duration_ms,
     )

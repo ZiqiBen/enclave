@@ -60,7 +60,7 @@ def candidate() -> Candidate:
 
 
 def ranked() -> RankedEvidence:
-    return RankedEvidence((candidate(),), True, 25)
+    return RankedEvidence((candidate(),), True, 25, 12.5, 8.25)
 
 
 def verified() -> VerifiedAnswer:
@@ -77,7 +77,7 @@ def verified() -> VerifiedAnswer:
         support_score=0.97,
         supported=True,
     )
-    return VerifiedAnswer(result, (claim,), True)
+    return VerifiedAnswer(result, (claim,), True, 20.5, 4.5)
 
 
 def client(*, schema_ready: bool = True):
@@ -119,6 +119,8 @@ def test_search_returns_ranked_evidence_and_diagnostics():
     assert response.status_code == 200
     assert body["reranked"] is True
     assert body["retrieved_count"] == 25
+    assert body["timings"]["retrieval_ms"] == 12.5
+    assert body["timings"]["rerank_ms"] == 8.25
     assert body["evidence"][0] == {
         "evidence_id": "E1",
         "chunk_id": 7,
@@ -142,6 +144,9 @@ def test_query_returns_answer_citations_and_claim_verification():
     assert body["claims"][0]["support_score"] == 0.97
     assert body["citations"][0]["chunk_id"] == 7
     assert body["generation_duration_ms"] == 1.25
+    assert body["timings"]["generation_ms"] == 20.5
+    assert body["timings"]["verification_ms"] == 4.5
+    assert body["timings"]["total_ms"] >= 0
     assert body["model"] == "qwen3:4b"
 
 

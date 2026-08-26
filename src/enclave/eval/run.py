@@ -9,15 +9,24 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
 from enclave.config import settings
 from enclave.db import connect
-from enclave.rank import RankedEvidence, retrieve_and_rank
+from enclave.rank import RankedEvidence, rank_candidates
+from enclave.retrieval.hybrid import dense_search, hybrid_search, lexical_search
 
 DEFAULT_DATASET = Path(__file__).with_name("postgres_core.json")
+EvalMode = Literal["lexical", "dense", "hybrid", "selective-rerank", "hybrid-rerank"]
+ALL_MODES: tuple[EvalMode, ...] = (
+    "lexical",
+    "dense",
+    "hybrid",
+    "selective-rerank",
+    "hybrid-rerank",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +38,7 @@ class EvalCase:
 
 @dataclass(frozen=True, slots=True)
 class CaseResult:
+    mode: str
     query: str
     answerable: bool
     hit: bool
@@ -65,7 +75,9 @@ def relevance(candidate, terms: tuple[str, ...]) -> int:
     return int(any(term.casefold() in text for term in terms))
 
 
-def score_case(case: EvalCase, ranked: RankedEvidence, latency_ms: float) -> CaseResult:
+def score_case(
+    case: EvalCase, ranked: RankedEvidence, latency_ms: float, mode: str = "hybrid"
+) -> CaseResult:
     labels = [
         relevance(candidate, case.relevant_terms) for candidate in ranked.candidates
     ]
@@ -77,6 +89,7 @@ def score_case(case: EvalCase, ranked: RankedEvidence, latency_ms: float) -> Cas
     ideal = sum(1 / math.log2(index + 1) for index in range(1, ideal_count + 1))
 
     return CaseResult(
+        mode=mode,
         query=case.query,
         answerable=case.answerable,
         hit=first is not None,
@@ -93,6 +106,7 @@ def summarize(results: list[CaseResult]) -> dict[str, float | int]:
     answerable = [result for result in results if result.answerable]
     latencies = [result.latency_ms for result in results]
     ordered = sorted(latencies)
+    warm_latencies = latencies[1:] or latencies
     p95_index = max(0, math.ceil(len(ordered) * 0.95) - 1)
     return {
         "cases": len(results),
@@ -102,23 +116,51 @@ def summarize(results: list[CaseResult]) -> dict[str, float | int]:
         "ndcg_at_10": statistics.fmean(result.ndcg_at_10 for result in answerable),
         "rerank_rate": statistics.fmean(result.reranked for result in results),
         "mean_latency_ms": statistics.fmean(latencies),
+        "warm_mean_latency_ms": statistics.fmean(warm_latencies),
         "p95_latency_ms": ordered[p95_index],
     }
 
 
-def run_evaluation(cases: list[EvalCase], *, top_k: int = 10) -> list[CaseResult]:
+def run_pipeline(conn, query: str, mode: EvalMode, top_k: int) -> RankedEvidence:
+    """Run one retrieval ablation while keeping all other inputs constant."""
+    depth = settings().resolved_rerank_depth
+    if mode == "lexical":
+        candidates = lexical_search(conn, query, limit=top_k)
+        return rank_candidates(query, candidates, limit=top_k, force=False)
+    if mode == "dense":
+        candidates = dense_search(conn, query, limit=top_k)
+        return rank_candidates(query, candidates, limit=top_k, force=False)
+
+    candidates = hybrid_search(conn, query, limit=depth)
+    force = {"hybrid": False, "selective-rerank": None, "hybrid-rerank": True}[mode]
+    return rank_candidates(
+        query,
+        candidates,
+        limit=top_k,
+        force=force,
+    )
+
+
+def run_evaluation(
+    cases: list[EvalCase], *, modes: tuple[EvalMode, ...], top_k: int = 10
+) -> list[CaseResult]:
     results: list[CaseResult] = []
     with connect() as conn:
-        for index, case in enumerate(cases, start=1):
-            started = time.perf_counter()
-            ranked = retrieve_and_rank(conn, case.query, limit=top_k)
-            elapsed_ms = (time.perf_counter() - started) * 1000
-            result = score_case(case, ranked, elapsed_ms)
-            results.append(result)
-            typer.echo(
-                f"[{index}/{len(cases)}] rank={result.first_relevant_rank or '-'} "
-                f"{elapsed_ms:.0f}ms  {case.query}"
-            )
+        total = len(cases) * len(modes)
+        completed = 0
+        for mode in modes:
+            for case in cases:
+                completed += 1
+                started = time.perf_counter()
+                ranked = run_pipeline(conn, case.query, mode, top_k)
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                result = score_case(case, ranked, elapsed_ms, mode)
+                results.append(result)
+                typer.echo(
+                    f"[{completed}/{total}] {mode:<15} "
+                    f"rank={result.first_relevant_rank or '-'} "
+                    f"{elapsed_ms:.0f}ms  {case.query}"
+                )
     return results
 
 
@@ -127,23 +169,35 @@ def _command(
         Path, typer.Option(help="JSON golden question set.")
     ] = DEFAULT_DATASET,
     top_k: Annotated[int, typer.Option(min=1, max=100)] = 10,
+    mode: Annotated[
+        str,
+        typer.Option(help="Ablation mode or 'all'."),
+    ] = "all",
     output: Annotated[
         Path | None, typer.Option(help="Optional JSON result path.")
     ] = None,
 ) -> None:
     """Measure retrieval quality and latency against a golden dataset."""
+    if mode != "all" and mode not in ALL_MODES:
+        raise typer.BadParameter(
+            f"choose all or one of: {', '.join(ALL_MODES)}", param_hint="mode"
+        )
+    modes = ALL_MODES if mode == "all" else (mode,)
     cases = load_cases(dataset)
-    results = run_evaluation(cases, top_k=top_k)
-    summary = summarize(results)
+    results = run_evaluation(cases, modes=modes, top_k=top_k)  # type: ignore[arg-type]
+    summaries = {
+        selected: summarize([result for result in results if result.mode == selected])
+        for selected in modes
+    }
     payload = {
         "created_at": datetime.now(UTC).isoformat(),
         "configuration": settings().describe(),
         "dataset": str(dataset),
         "top_k": top_k,
-        "summary": summary,
+        "summaries": summaries,
         "results": [asdict(result) for result in results],
     }
-    typer.echo("\n" + json.dumps(summary, indent=2))
+    typer.echo("\n" + json.dumps(summaries, indent=2))
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
