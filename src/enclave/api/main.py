@@ -1,18 +1,27 @@
 """FastAPI application exposing Enclave's retrieval and answer pipeline."""
 
+import asyncio
+import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Annotated, Literal, Protocol
 
 import psycopg
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 
 from enclave import db
 from enclave.answer import VerifiedAnswer, answer_with_verification
+from enclave.config import settings
 from enclave.rank import RankedEvidence, retrieve_and_rank
+
+WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 
 
 class SearchRunner(Protocol):
@@ -136,13 +145,27 @@ def _evidence(ranked: RankedEvidence) -> list[EvidenceResponse]:
 
 
 def create_app(services: Services | None = None) -> FastAPI:
+    injected_services = services is not None
     services = services or Services()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.warmup = None
+        if settings().warm_models and not injected_services:
+            from enclave.models.warmup import warm_local_models
+
+            app.state.warmup = await asyncio.to_thread(warm_local_models)
+        yield
+
     app = FastAPI(
         title="Enclave",
         version="0.1.0",
         description="Zero-egress retrieval and grounded answer engine.",
+        lifespan=lifespan,
     )
     app.state.services = services
+    app.state.warmup = None
+    app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 
     def get_conn(request: Request):
         try:
@@ -156,12 +179,16 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     Connection = Annotated[object, Depends(get_conn)]
 
+    @app.get("/", include_in_schema=False)
+    def home() -> FileResponse:
+        return FileResponse(WEB_DIR / "index.html")
+
     @app.get("/health/live")
     def live() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get("/health/ready")
-    def ready(conn: Connection) -> dict[str, object]:
+    def ready(request: Request, conn: Connection) -> dict[str, object]:
         try:
             with conn.cursor() as cur:  # type: ignore[attr-defined]
                 cur.execute("SELECT to_regclass('public.chunks') IS NOT NULL")
@@ -176,7 +203,13 @@ def create_app(services: Services | None = None) -> FastAPI:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="database schema is not migrated",
             )
-        return {"status": "ready", "database": "ok"}
+        warmup = request.app.state.warmup
+        return {
+            "status": "ready",
+            "database": "ok",
+            "models": "warm" if warmup is not None else "on-demand",
+            "warmup": asdict(warmup) if warmup is not None else None,
+        }
 
     @app.post("/v1/search", response_model=SearchResponse)
     def search(body: QueryRequest, conn: Connection) -> SearchResponse:
@@ -279,4 +312,12 @@ app = create_app()
 
 def cli() -> None:
     """Run the local development API."""
+    uvicorn.run("enclave.api.main:app", host="127.0.0.1", port=8000, reload=False)
+
+
+def cli_local() -> None:
+    """Migrate, warm every model, and serve the complete local application."""
+    os.environ["ENCLAVE_WARM_MODELS"] = "1"
+    settings.cache_clear()
+    db.migrate()
     uvicorn.run("enclave.api.main:app", host="127.0.0.1", port=8000, reload=False)

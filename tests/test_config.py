@@ -44,6 +44,7 @@ class TestProfiles:
         """The GPU-less profile is the default on purpose. If this ever
         flips, the Mac silently gets a configuration it cannot serve."""
         assert Settings().profile == "portable"
+        assert Settings().warm_models is False
 
     def test_portable_is_conservative_even_on_a_cuda_host(self):
         cfg = Settings(profile="portable", device="cuda")

@@ -159,3 +159,33 @@ The warm trusted path is now about 3.0 seconds end to end. Generation is the
 largest remaining cost on that path; reranking dominates only uncertain
 queries. Cold model initialization remains a separate deployment concern and
 should be handled by startup warm-up before production traffic.
+
+## Local startup warm-up
+
+`uv run enclave-local` is the production-like local entry point. It applies
+pending database migrations, executes a real query embedding, executes a
+one-document reranker forward pass, asks Ollama to load and pin the configured
+LLM, and only then completes FastAPI startup. `/health/ready` reports `models:
+warm` plus the per-model startup durations.
+
+The first verified cluster query after enabling warm-up took 6.81 seconds,
+versus 13.57 seconds on the earlier fully cold path. Retrieval fell from 4.50
+seconds to 0.49 seconds. Generation still took 5.91 seconds because loading LLM
+weights does not eliminate evaluation of the real evidence prompt; subsequent
+generation remains the next optimization target.
+
+## Local end-user interface
+
+The FastAPI process now serves a zero-dependency chat interface at `/`; the
+Swagger page remains available at `/docs`. The interface reports whether local
+models are warm, offers PostgreSQL example questions, sends real `/v1/query`
+requests, renders verified answers without injecting model-authored HTML,
+expands the top five evidence passages, shows retrieval/generation/total stage
+timings, and persists useful/not-useful votes through `/v1/feedback`.
+
+The layout is responsive and keyboard accessible: Enter submits, Shift+Enter
+adds a line, controls have accessible labels, and reduced-motion preferences
+are respected. It loads no fonts, scripts, styles, images, analytics, or CDN
+resources from outside the local service. A built wheel was inspected to
+confirm `index.html`, `app.css`, and `app.js` are included in the distributable
+package. At this milestone the suite contains 99 passing tests.

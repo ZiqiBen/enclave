@@ -62,6 +62,7 @@ enclave-migrate = "enclave.db:cli_migrate"
 enclave-ingest = "enclave.ingest.pipeline:cli"
 enclave-eval = "enclave.eval.run:cli"
 enclave-api = "enclave.api.main:cli"
+enclave-local = "enclave.api.main:cli_local"
 
 [build-system]
 requires = ["hatchling"]

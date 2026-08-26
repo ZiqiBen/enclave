@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://enclave:enclave@127.0.0.1:5433/enclave"
     redis_url: str = "redis://127.0.0.1:6380/0"
     device: str | None = None  # override; normally auto-resolved
+    warm_models: bool = False  # enclave-local enables this before startup
 
     # --- guarantees ---------------------------------------------------
     # When true, model loaders refuse any network fetch and require a

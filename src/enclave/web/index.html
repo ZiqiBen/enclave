@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Private, cited answers from your local knowledge base." />
+    <title>Enclave · Private knowledge, grounded answers</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Enclave home">
+          <span class="brand-mark">E</span>
+          <span>ENCLAVE</span>
+        </a>
+        <div class="status" id="status" role="status">
+          <span class="status-dot"></span>
+          <span id="status-text">Connecting</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro" id="intro">
+          <p class="eyebrow">LOCAL KNOWLEDGE ENGINE</p>
+          <h1>Ask your private<br /><em>knowledge.</em></h1>
+          <p class="intro-copy">
+            Search the PostgreSQL documentation with answers that stay local,
+            show their sources, and verify every claim.
+          </p>
+          <div class="suggestions" aria-label="Suggested questions">
+            <button type="button" data-question="What is PostgreSQL?">What is PostgreSQL?</button>
+            <button type="button" data-question="When should I use a GIN index?">When should I use a GIN index?</button>
+            <button type="button" data-question="How does VACUUM reclaim storage?">How does VACUUM work?</button>
+          </div>
+        </section>
+
+        <section class="conversation" id="conversation" aria-live="polite"></section>
+      </main>
+
+      <footer class="composer-wrap">
+        <form class="composer" id="query-form">
+          <label class="sr-only" for="query">Ask the knowledge base</label>
+          <textarea id="query" rows="1" maxlength="4000" placeholder="Ask the PostgreSQL knowledge base…" required></textarea>
+          <button class="send" id="send" type="submit" aria-label="Send question">
+            <span>Ask</span><span aria-hidden="true">↗</span>
+          </button>
+        </form>
+        <p class="privacy-note"><span>●</span> Runs locally · Answers cite indexed evidence</p>
+      </footer>
+    </div>
+
+    <template id="loading-template">
+      <article class="turn assistant-turn loading-card">
+        <div class="turn-label"><span class="mini-mark">E</span> Enclave</div>
+        <div class="thinking"><i></i><i></i><i></i><span>Searching and verifying evidence</span></div>
+      </article>
+    </template>
+  </body>
+</html>

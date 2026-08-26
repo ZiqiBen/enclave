@@ -60,6 +60,17 @@ uv run enclave-ingest ./corpora/postgres-docs
 uv run enclave-api
 ```
 
+For the complete interactive local deployment, use the warm entry point. It
+applies pending migrations and loads the embedding, reranking, and Ollama models
+before readiness succeeds:
+
+```bash
+uv run enclave-local
+```
+
+Open `http://127.0.0.1:8000/` for the end-user chat interface. Swagger remains
+available at `http://127.0.0.1:8000/docs` for API-level testing.
+
 The query response includes server-side stage timings so local deployments can
 be tuned without guessing:
 

@@ -97,11 +97,28 @@ def test_liveness_does_not_touch_dependencies():
     assert response.json() == {"status": "ok"}
 
 
+def test_home_serves_local_chat_interface():
+    api, _ = client()
+    response = api.get("/")
+    assert response.status_code == 200
+    assert "Ask your private" in response.text
+    assert "/assets/app.js" in response.text
+
+
+def test_web_assets_are_served_without_external_dependencies():
+    api, _ = client()
+    script = api.get("/assets/app.js")
+    assert script.status_code == 200
+    assert 'fetch("/v1/query"' in script.text
+
+
 def test_readiness_checks_migrated_schema():
     api, _ = client()
     assert api.get("/health/ready").json() == {
         "status": "ready",
         "database": "ok",
+        "models": "on-demand",
+        "warmup": None,
     }
 
 
