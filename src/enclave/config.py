@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import platform
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -77,6 +78,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6380/0"
     device: str | None = None  # override; normally auto-resolved
     warm_models: bool = False  # enclave-local enables this before startup
+    upload_dir: Path = Path("data/uploads")
+    max_upload_mb: int = 20
 
     # --- guarantees ---------------------------------------------------
     # When true, model loaders refuse any network fetch and require a

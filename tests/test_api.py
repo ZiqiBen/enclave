@@ -196,3 +196,12 @@ def test_unknown_fields_are_rejected():
     api, _ = client()
     response = api.post("/v1/query", json={"query": "ok", "secret": "ignored"})
     assert response.status_code == 422
+
+
+def test_upload_rejects_unsupported_document_before_storage():
+    api, _ = client()
+    response = api.post(
+        "/v1/documents", files={"file": ("payload.exe", b"unsafe", "text/plain")}
+    )
+    assert response.status_code == 415
+    assert response.json()["detail"] == "unsupported document type"

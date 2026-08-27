@@ -51,7 +51,7 @@ def _source_path(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def _doc_id(source_path: str) -> str:
+def document_id(source_path: str) -> str:
     return hashlib.sha256(source_path.encode("utf-8")).hexdigest()
 
 
@@ -149,7 +149,7 @@ def ingest_path(
             relative_path = _source_path(path, root)
             written, duplicates = _write_document(
                 conn,
-                doc_id=_doc_id(relative_path),
+                doc_id=document_id(relative_path),
                 source_path=relative_path,
                 title=parsed.title,
                 doc_type=parsed.doc_type,

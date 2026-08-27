@@ -71,6 +71,11 @@ uv run enclave-local
 Open `http://127.0.0.1:8000/` for the end-user chat interface. Swagger remains
 available at `http://127.0.0.1:8000/docs` for API-level testing.
 
+Use **Knowledge base** in the top bar to upload PDF, Markdown, HTML, or text
+documents (20 MB maximum), follow background parsing/embedding progress, and
+delete an uploaded document together with its indexed chunks. Uploaded source
+files stay under the ignored local `data/uploads/` directory.
+
 The query response includes server-side stage timings so local deployments can
 be tuned without guessing:
 

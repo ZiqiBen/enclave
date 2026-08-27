@@ -15,9 +15,12 @@
           <span class="brand-mark">E</span>
           <span>ENCLAVE</span>
         </a>
-        <div class="status" id="status" role="status">
-          <span class="status-dot"></span>
-          <span id="status-text">Connecting</span>
+        <div class="top-actions">
+          <button class="library-button" id="library-open" type="button">Knowledge base <span id="document-count">0</span></button>
+          <div class="status" id="status" role="status">
+            <span class="status-dot"></span>
+            <span id="status-text">Connecting</span>
+          </div>
         </div>
       </header>
 
@@ -50,6 +53,26 @@
         <p class="privacy-note"><span>●</span> Runs locally · Answers cite indexed evidence</p>
       </footer>
     </div>
+
+    <dialog class="library" id="library">
+      <div class="library-head">
+        <div>
+          <p class="eyebrow">PRIVATE LIBRARY</p>
+          <h2>Knowledge base</h2>
+        </div>
+        <button class="close-button" id="library-close" type="button" aria-label="Close knowledge base">×</button>
+      </div>
+      <form class="drop-zone" id="upload-form">
+        <input id="document-file" type="file" accept=".pdf,.md,.markdown,.html,.htm,.txt" required />
+        <label for="document-file">
+          <strong>Drop a document here</strong>
+          <span>or choose a PDF, Markdown, HTML, or text file · max 20 MB</span>
+        </label>
+        <button class="upload-button" id="upload-button" type="submit">Import document</button>
+      </form>
+      <p class="upload-message" id="upload-message" role="status"></p>
+      <div class="document-list" id="document-list"></div>
+    </dialog>
 
     <template id="loading-template">
       <article class="turn assistant-turn loading-card">

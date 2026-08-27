@@ -189,3 +189,26 @@ are respected. It loads no fonts, scripts, styles, images, analytics, or CDN
 resources from outside the local service. A built wheel was inspected to
 confirm `index.html`, `app.css`, and `app.js` are included in the distributable
 package. At this milestone the suite contains 99 passing tests.
+
+## Upload and knowledge-base management
+
+The local interface accepts PDF, Markdown, HTML, and text uploads up to 20 MB.
+Names are Unicode-normalized, flattened to a basename, filtered to safe
+characters, and checked against the parser allowlist before a directory is
+created. Every job receives a random ID and its own directory beneath the
+configured ignored upload root, so same-name files cannot overwrite each
+other.
+
+An upload returns HTTP 202 with a persistent PostgreSQL job immediately. A
+FastAPI background task then records parsing, embedding, completion, or failure
+state. The interface polls only while work is active. Jobs interrupted by a
+service restart are marked failed on startup instead of remaining permanently
+in progress. Active jobs cannot be deleted; completed deletion cascades through
+the document's chunks and embeddings, removes the job record, and removes only
+the job directory after verifying it is inside the configured upload root.
+
+A real README upload completed with nine embedded chunks and no error. Its API
+deletion returned 204, the document/job list returned to zero, and the isolated
+upload directory was removed. Unsupported-extension behavior, path flattening,
+active-job protection, cascade deletion, restart recovery, UI routes, and the
+existing retrieval stack are covered by the automated suite.

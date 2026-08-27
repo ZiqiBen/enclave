@@ -3,15 +3,26 @@
 import asyncio
 import os
 import time
+import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal, Protocol
 
 import psycopg
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
@@ -19,6 +30,16 @@ from starlette.staticfiles import StaticFiles
 from enclave import db
 from enclave.answer import VerifiedAnswer, answer_with_verification
 from enclave.config import settings
+from enclave.ingest.jobs import (
+    IngestJob,
+    create_job,
+    delete_job,
+    fail_interrupted_jobs,
+    get_job,
+    list_jobs,
+    run_ingest_job,
+    safe_filename,
+)
 from enclave.rank import RankedEvidence, retrieve_and_rank
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
@@ -115,6 +136,22 @@ class FeedbackResponse(BaseModel):
     id: int
 
 
+class IngestJobResponse(BaseModel):
+    job_id: str
+    filename: str
+    status: str
+    progress: int
+    doc_id: str | None
+    chunks_written: int
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+def _job_response(job: IngestJob) -> IngestJobResponse:
+    return IngestJobResponse(**asdict(job))
+
+
 def _default_search(conn, query: str, limit: int) -> RankedEvidence:
     return retrieve_and_rank(conn, query, limit=limit)
 
@@ -151,6 +188,9 @@ def create_app(services: Services | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.warmup = None
+        if not injected_services:
+            with db.connect() as conn:
+                fail_interrupted_jobs(conn)
         if settings().warm_models and not injected_services:
             from enclave.models.warmup import warm_local_models
 
@@ -303,6 +343,73 @@ def create_app(services: Services | None = None) -> FastAPI:
         except psycopg.errors.ForeignKeyViolation as exc:
             raise HTTPException(status_code=404, detail="chunk not found") from exc
         return FeedbackResponse(id=feedback_id)
+
+    @app.post(
+        "/v1/documents",
+        response_model=IngestJobResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def upload_document(
+        background_tasks: BackgroundTasks,
+        conn: Connection,
+        file: Annotated[UploadFile, File()],
+    ) -> IngestJobResponse:
+        cfg = settings()
+        try:
+            filename = safe_filename(file.filename or "")
+        except ValueError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+        job_id = uuid.uuid4().hex
+        job_dir = cfg.upload_dir.resolve() / job_id
+        stored_path = job_dir / f"{job_id}_{filename}"
+        job_dir.mkdir(parents=True, exist_ok=False)
+        size = 0
+        max_bytes = cfg.max_upload_mb * 1024 * 1024
+        try:
+            with stored_path.open("xb") as output:
+                while chunk := await file.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"file exceeds {cfg.max_upload_mb} MB limit",
+                        )
+                    output.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=400, detail="file is empty")
+            create_job(conn, job_id, filename, stored_path)
+        except Exception:
+            stored_path.unlink(missing_ok=True)
+            job_dir.rmdir()
+            raise
+        finally:
+            await file.close()
+
+        background_tasks.add_task(run_ingest_job, job_id, stored_path, cfg.database_url)
+        job = get_job(conn, job_id)
+        assert job is not None
+        return _job_response(job)
+
+    @app.get("/v1/documents", response_model=list[IngestJobResponse])
+    def documents(conn: Connection) -> list[IngestJobResponse]:
+        return [_job_response(job) for job in list_jobs(conn)]
+
+    @app.get("/v1/documents/{job_id}", response_model=IngestJobResponse)
+    def document_status(job_id: str, conn: Connection) -> IngestJobResponse:
+        job = get_job(conn, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="document not found")
+        return _job_response(job)
+
+    @app.delete("/v1/documents/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def remove_document(job_id: str, conn: Connection) -> None:
+        try:
+            deleted = delete_job(conn, job_id, settings().upload_dir)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="document not found")
 
     return app
 

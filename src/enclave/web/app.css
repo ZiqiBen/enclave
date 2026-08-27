@@ -27,6 +27,9 @@ button { color: inherit; }
 
 .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; min-height: 100vh; padding-bottom: 150px; }
 .topbar { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.top-actions { display: flex; align-items: center; gap: 22px; }
+.library-button { padding: 9px 12px; border: 1px solid var(--line); border-radius: 7px; background: rgba(251,250,246,.6); cursor: pointer; font-size: 12px; }
+.library-button span { display: inline-grid; min-width: 20px; height: 20px; margin-left: 6px; place-items: center; border-radius: 10px; background: var(--ink); color: var(--accent); font: 10px/1 monospace; }
 .brand { display: flex; gap: 10px; align-items: center; color: inherit; text-decoration: none; font: 750 14px/1 monospace; letter-spacing: .16em; }
 .brand-mark, .mini-mark { display: inline-grid; place-items: center; background: var(--ink); color: var(--accent); border-radius: 4px; }
 .brand-mark { width: 30px; height: 30px; font-size: 16px; letter-spacing: 0; }
@@ -90,12 +93,40 @@ textarea::placeholder { color: #94978f; }
 .error-card { color: var(--danger); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
+.library { width: min(680px, calc(100% - 28px)); max-height: min(760px, calc(100vh - 40px)); padding: 0; border: 1px solid #aaa99f; border-radius: 18px; background: var(--card); color: var(--ink); box-shadow: 0 30px 90px rgba(23,32,28,.28); }
+.library::backdrop { background: rgba(23,32,28,.46); backdrop-filter: blur(3px); }
+.library-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 28px 28px 20px; border-bottom: 1px solid var(--line); }
+.library-head .eyebrow { margin-bottom: 10px; }
+.library h2 { margin: 0; font: 400 38px/1 Georgia, serif; letter-spacing: -.03em; }
+.close-button { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; font-size: 24px; line-height: 1; }
+.drop-zone { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin: 22px 28px 10px; padding: 18px; border: 1px dashed #9ba097; border-radius: 12px; background: #f4f2eb; }
+.drop-zone.dragging { border-color: var(--forest); background: #ecf1df; }
+.drop-zone input { position: absolute; opacity: 0; pointer-events: none; }
+.drop-zone label { display: grid; gap: 6px; cursor: pointer; }
+.drop-zone label strong { font-size: 14px; }
+.drop-zone label span { color: var(--muted); font-size: 12px; }
+.upload-button { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--accent); font-weight: 700; cursor: pointer; }
+.upload-button:disabled { opacity: .5; cursor: wait; }
+.upload-message { min-height: 18px; margin: 0 28px 8px; color: var(--muted); font-size: 12px; }
+.document-list { max-height: 420px; padding: 4px 28px 28px; overflow: auto; }
+.document-empty { padding: 30px 0; color: var(--muted); text-align: center; font-size: 14px; }
+.document-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 15px 0; border-top: 1px solid var(--line); }
+.document-name { margin: 0 0 7px; font-weight: 650; overflow-wrap: anywhere; }
+.document-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font: 11px/1.3 monospace; }
+.progress-track { height: 4px; margin-top: 11px; overflow: hidden; border-radius: 2px; background: #dedbd2; }
+.progress-bar { height: 100%; background: var(--forest); transition: width .3s ease; }
+.job-failed { color: var(--danger); }
+.delete-document { align-self: center; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.delete-document:hover { color: var(--danger); border-color: var(--danger); }
+
 @keyframes pulse { to { opacity: .2; transform: translateY(-3px); } }
 @keyframes enter { from { opacity: 0; transform: translateY(8px); } }
 
 @media (max-width: 680px) {
   .shell { width: min(100% - 28px, 1180px); }
   .topbar { height: 68px; }
+  .status { display: none; }
+  .library-button { padding: 8px 10px; }
   .intro { padding-top: 8vh; }
   h1 { font-size: clamp(52px, 17vw, 72px); }
   .intro-copy { font-size: 16px; }
@@ -105,6 +136,8 @@ textarea::placeholder { color: #94978f; }
   .composer-wrap { padding-inline: 14px; }
   .send span:first-child { display: none; }
   .send { padding-inline: 16px; }
+  .drop-zone { grid-template-columns: 1fr; }
+  .upload-button { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

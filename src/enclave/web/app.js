@@ -6,6 +6,16 @@ const intro = document.querySelector("#intro");
 const statusEl = document.querySelector("#status");
 const statusText = document.querySelector("#status-text");
 const loadingTemplate = document.querySelector("#loading-template");
+const library = document.querySelector("#library");
+const libraryOpen = document.querySelector("#library-open");
+const libraryClose = document.querySelector("#library-close");
+const uploadForm = document.querySelector("#upload-form");
+const fileInput = document.querySelector("#document-file");
+const uploadButton = document.querySelector("#upload-button");
+const uploadMessage = document.querySelector("#upload-message");
+const documentList = document.querySelector("#document-list");
+const documentCount = document.querySelector("#document-count");
+let pollTimer;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -163,3 +173,103 @@ document.querySelectorAll("[data-question]").forEach((button) => {
 });
 
 checkHealth();
+
+function renderDocuments(jobs) {
+  documentList.replaceChildren();
+  documentCount.textContent = jobs.filter((job) => job.status === "complete").length;
+  if (!jobs.length) {
+    documentList.append(element("p", "document-empty", "No uploaded documents yet."));
+    return;
+  }
+  jobs.forEach((job) => {
+    const row = element("article", "document-row");
+    const info = element("div");
+    info.append(element("p", "document-name", job.filename));
+    const meta = element("div", `document-meta ${job.status === "failed" ? "job-failed" : ""}`);
+    const statusLabel = job.status === "complete" ? `${job.chunks_written} chunks` : `${job.status} · ${job.progress}%`;
+    meta.append(element("span", "", statusLabel));
+    if (job.error) meta.append(element("span", "", job.error));
+    info.append(meta);
+    if (!["complete", "failed"].includes(job.status)) {
+      const track = element("div", "progress-track");
+      const bar = element("div", "progress-bar");
+      bar.style.width = `${job.progress}%`;
+      track.append(bar);
+      info.append(track);
+    }
+    row.append(info);
+    if (["complete", "failed"].includes(job.status)) {
+      const remove = element("button", "delete-document", "Delete");
+      remove.type = "button";
+      remove.addEventListener("click", async () => {
+        if (!window.confirm(`Delete ${job.filename} and its indexed evidence?`)) return;
+        const response = await fetch(`/v1/documents/${job.job_id}`, { method: "DELETE" });
+        if (response.ok) loadDocuments();
+      });
+      row.append(remove);
+    }
+    documentList.append(row);
+  });
+}
+
+async function loadDocuments() {
+  try {
+    const response = await fetch("/v1/documents");
+    if (!response.ok) throw new Error("Could not load documents");
+    const jobs = await response.json();
+    renderDocuments(jobs);
+    const importing = jobs.some((job) => !["complete", "failed"].includes(job.status));
+    window.clearTimeout(pollTimer);
+    if (importing) pollTimer = window.setTimeout(loadDocuments, 1200);
+  } catch {
+    uploadMessage.textContent = "Could not load the local knowledge base.";
+  }
+}
+
+libraryOpen.addEventListener("click", () => {
+  library.showModal();
+  loadDocuments();
+});
+libraryClose.addEventListener("click", () => library.close());
+library.addEventListener("click", (event) => {
+  if (event.target === library) library.close();
+});
+
+["dragenter", "dragover"].forEach((name) => uploadForm.addEventListener(name, (event) => {
+  event.preventDefault();
+  uploadForm.classList.add("dragging");
+}));
+["dragleave", "drop"].forEach((name) => uploadForm.addEventListener(name, (event) => {
+  event.preventDefault();
+  uploadForm.classList.remove("dragging");
+}));
+uploadForm.addEventListener("drop", (event) => {
+  if (event.dataTransfer.files.length) fileInput.files = event.dataTransfer.files;
+});
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) uploadMessage.textContent = `Selected: ${fileInput.files[0].name}`;
+});
+
+uploadForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const file = fileInput.files[0];
+  if (!file) return;
+  uploadButton.disabled = true;
+  uploadMessage.textContent = "Uploading securely to the local service…";
+  const body = new FormData();
+  body.append("file", file);
+  try {
+    const response = await fetch("/v1/documents", { method: "POST", body });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Upload failed");
+    uploadMessage.textContent = "Uploaded. Parsing and embedding in the background.";
+    fileInput.value = "";
+    loadDocuments();
+  } catch (error) {
+    uploadMessage.textContent = error.message;
+  } finally {
+    uploadButton.disabled = false;
+  }
+});
+
+loadDocuments();
