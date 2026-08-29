@@ -10,6 +10,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Model weights and caches -- never commit these. Multi-gigabyte binaries
 # in git history are unrecoverable without a rewrite.

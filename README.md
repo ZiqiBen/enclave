@@ -147,7 +147,51 @@ So the split is by concern, not uniform:
 | API, worker | native | container |
 | Postgres + pgvector, Redis | container | container |
 
-`docker compose --profile release up` runs everything containerized for the Linux target, so production stays fully containerized without hurting laptop development.
+`docker compose --profile release up` runs the API and encoders in a Linux
+container while connecting to an Ollama process on the host. The separate
+production compose file below adds the HTTPS gateway and hardened networking.
+
+## Self-hosted HTTPS deployment
+
+The production stack is separate from the laptop development compose file. It
+builds the FastAPI application as a non-root container, keeps PostgreSQL and
+Redis off public host ports, persists uploads and database state, and exposes
+only Caddy on ports 80/443. Caddy obtains and renews the certificate for the
+configured DNS name. The application container is restricted to the internal
+backend network; model weights remain a read-only host mount.
+
+On a Linux server with Docker Compose, a DNS record pointing to the server, a
+populated Hugging Face cache, and Ollama already serving the configured model:
+
+```bash
+cp .env.production.example .env.production
+# Edit every value, then validate it without starting services.
+set -a; source .env.production; set +a
+uv run python scripts/production_preflight.py
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml up -d --build
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml exec api enclave-create-user admin --admin
+```
+
+Ollama must listen on the Docker host interface rather than only localhost;
+keep port 11434 blocked at the public firewall. The production API enables the
+Secure session-cookie flag automatically. `POSTGRES_PASSWORD` must be long and
+URL-safe because it is embedded in the internal connection URL. Never commit
+`.env.production`.
+
+Create a private database and upload-source backup with:
+
+```bash
+./scripts/backup_postgres.sh /srv/enclave/backups
+```
+
+Restore is intentionally explicit and destructive; stop user traffic first,
+then pass the confirmation word:
+
+```bash
+./scripts/restore_postgres.sh /srv/enclave/backups/enclave-TIMESTAMP RESTORE
+```
 
 ## Two guarantees, both tested
 

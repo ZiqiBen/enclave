@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+.models
+.env
+.env.*
+!.env.example
+data
+corpora
+benchmarks/raw
+__pycache__
+*.pyc
+*.pyo
+*.safetensors
+*.gguf
+*.onnx
+.DS_Store

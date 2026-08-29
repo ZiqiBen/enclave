@@ -285,3 +285,27 @@ accounts searching the same term without seeing each other's chunks or
 conversation history. The complete suite and lint checks pass on the isolated
 feature branch. The development database was intentionally not migrated before
 an administrator password was chosen, preventing an accidental local lockout.
+
+## Self-hosted production baseline
+
+The Linux deployment now has a reproducible application image and a separate
+production Compose stack. FastAPI runs as an unprivileged container user;
+PostgreSQL, Redis, and the API have no public host ports; and Caddy is the only
+internet-facing service. Caddy terminates automatically managed HTTPS and adds
+HSTS, CSP, frame denial, MIME-sniffing protection, a restrictive permissions
+policy, and no-referrer behavior. The application enables Secure session
+cookies in this stack while preserving localhost-friendly defaults for laptop
+development.
+
+Production configuration is kept in an ignored environment file and checked
+before deployment for a real DNS name, a long URL-safe database password, and
+an existing model cache. Model weights are mounted read-only, uploads and
+service state use named volumes, Redis persistence is enabled, and the backend
+network is isolated from direct internet egress. Backup tooling produces a
+private PostgreSQL custom-format dump plus the uploaded source files; restore
+requires an explicit destructive confirmation word.
+
+Static deployment security contracts, the full Python suite, lint, shell
+syntax checks, production preflight, source distribution, and wheel builds all
+pass. A real container image build remains for the target Linux server because
+the current macOS environment has no Docker-compatible CLI installed.

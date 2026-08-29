@@ -61,6 +61,8 @@ services:
       # host.docker.internal if you ever run this profile locally.
       ENCLAVE_OLLAMA_URL: http://host.docker.internal:11434
       ENCLAVE_OFFLINE_ONLY: "1"
+      ENCLAVE_API_HOST: 0.0.0.0
+      ENCLAVE_API_PORT: 8000
       HF_HOME: /models
     volumes:
       # Weights are mounted, never downloaded at runtime.

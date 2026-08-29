@@ -625,7 +625,10 @@ app = create_app()
 
 def cli() -> None:
     """Run the local development API."""
-    uvicorn.run("enclave.api.main:app", host="127.0.0.1", port=8000, reload=False)
+    cfg = settings()
+    uvicorn.run(
+        "enclave.api.main:app", host=cfg.api_host, port=cfg.api_port, reload=False
+    )
 
 
 def cli_local() -> None:
@@ -633,4 +636,7 @@ def cli_local() -> None:
     os.environ["ENCLAVE_WARM_MODELS"] = "1"
     settings.cache_clear()
     db.migrate()
-    uvicorn.run("enclave.api.main:app", host="127.0.0.1", port=8000, reload=False)
+    cfg = settings()
+    uvicorn.run(
+        "enclave.api.main:app", host=cfg.api_host, port=cfg.api_port, reload=False
+    )

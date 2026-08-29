@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     session_hours: int = 24
     cookie_secure: bool = False  # enable behind HTTPS in a deployed environment
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
 
     # --- guarantees ---------------------------------------------------
     # When true, model loaders refuse any network fetch and require a
