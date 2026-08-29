@@ -212,3 +212,23 @@ deletion returned 204, the document/job list returned to zero, and the isolated
 upload directory was removed. Unsupported-extension behavior, path flattening,
 active-job protection, cascade deletion, restart recovery, UI routes, and the
 existing retrieval stack are covered by the automated suite.
+
+## Persistent conversation history
+
+Successful query exchanges are stored atomically as a conversation plus paired
+user/assistant messages in PostgreSQL. Assistant metadata contains the exact
+evidence, citations, verification result, reranking decision, and stage timings
+shown when the answer was generated. Reopening history renders that immutable
+snapshot and does not spend inference time or silently change old evidence.
+
+The interface can start, continue, list, reopen, and delete conversations. A
+conversation title comes from the first question, list previews use the latest
+assistant message, and deletion cascades only through conversation messages.
+History remains local and is deliberately separate from document deletion and
+retrieval feedback.
+
+A real verified MVCC query created a two-message conversation containing five
+saved evidence passages. Listing history took 8.8 ms, reopening returned the
+stored verification/evidence snapshot without inference, deletion returned
+HTTP 204, and the list returned to zero. At this milestone the complete suite
+contains 113 passing tests.

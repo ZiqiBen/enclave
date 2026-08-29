@@ -103,6 +103,7 @@ def test_home_serves_local_chat_interface():
     assert response.status_code == 200
     assert "Ask your private" in response.text
     assert "/assets/app.js" in response.text
+    assert "History" in response.text
 
 
 def test_web_assets_are_served_without_external_dependencies():
@@ -165,6 +166,7 @@ def test_query_returns_answer_citations_and_claim_verification():
     assert body["timings"]["verification_ms"] == 4.5
     assert body["timings"]["total_ms"] >= 0
     assert body["model"] == "qwen3:4b"
+    assert body["conversation_id"] is None
 
 
 def test_feedback_is_persisted_and_returns_identifier():

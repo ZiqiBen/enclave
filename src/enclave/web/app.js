@@ -16,6 +16,12 @@ const uploadMessage = document.querySelector("#upload-message");
 const documentList = document.querySelector("#document-list");
 const documentCount = document.querySelector("#document-count");
 let pollTimer;
+const historyPanel = document.querySelector("#history-panel");
+const historyOpen = document.querySelector("#history-open");
+const historyClose = document.querySelector("#history-close");
+const historyList = document.querySelector("#history-list");
+const newChat = document.querySelector("#new-chat");
+let currentConversationId = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -130,12 +136,14 @@ async function ask(question) {
     const response = await fetch("/v1/query", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: question, top_k: 5 }),
+      body: JSON.stringify({ query: question, top_k: 5, conversation_id: currentConversationId }),
     });
     if (!response.ok) throw new Error(`The local service returned ${response.status}.`);
     const data = await response.json();
+    currentConversationId = data.conversation_id;
     loading.remove();
     addAnswer(data, question);
+    loadHistory();
   } catch (error) {
     loading.remove();
     addError(error.message || "The local service could not answer right now.");
@@ -273,3 +281,81 @@ uploadForm.addEventListener("submit", async (event) => {
 });
 
 loadDocuments();
+
+function resetConversation() {
+  currentConversationId = null;
+  conversation.replaceChildren();
+  intro.classList.remove("compact");
+  historyPanel.close();
+  input.focus();
+}
+
+function renderHistory(items) {
+  historyList.replaceChildren();
+  if (!items.length) {
+    historyList.append(element("p", "document-empty", "No saved conversations yet."));
+    return;
+  }
+  items.forEach((item) => {
+    const row = element("article", "history-row");
+    const select = element("button", "history-select");
+    select.type = "button";
+    select.append(element("span", "history-title", item.title));
+    select.append(element("span", "history-preview", item.preview || `${item.message_count} messages`));
+    select.addEventListener("click", () => openConversation(item.conversation_id));
+    const remove = element("button", "history-delete", "×");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Delete ${item.title}`);
+    remove.addEventListener("click", async () => {
+      if (!window.confirm(`Delete conversation “${item.title}”?`)) return;
+      const response = await fetch(`/v1/conversations/${item.conversation_id}`, { method: "DELETE" });
+      if (response.ok) {
+        if (currentConversationId === item.conversation_id) resetConversation();
+        loadHistory();
+      }
+    });
+    row.append(select, remove);
+    historyList.append(row);
+  });
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch("/v1/conversations");
+    if (!response.ok) throw new Error();
+    renderHistory(await response.json());
+  } catch {
+    historyList.replaceChildren(element("p", "document-empty", "Could not load local history."));
+  }
+}
+
+async function openConversation(identifier) {
+  const response = await fetch(`/v1/conversations/${identifier}`);
+  if (!response.ok) return;
+  const saved = await response.json();
+  currentConversationId = identifier;
+  conversation.replaceChildren();
+  intro.classList.add("compact");
+  for (let index = 0; index < saved.messages.length; index += 1) {
+    const message = saved.messages[index];
+    if (message.role === "user") {
+      addUserTurn(message.content);
+    } else {
+      const previous = saved.messages[index - 1];
+      addAnswer({ ...message.metadata, answer: message.content }, previous?.content || "Saved question");
+    }
+  }
+  historyPanel.close();
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+}
+
+historyOpen.addEventListener("click", () => {
+  historyPanel.showModal();
+  loadHistory();
+});
+historyClose.addEventListener("click", () => historyPanel.close());
+historyPanel.addEventListener("click", (event) => {
+  if (event.target === historyPanel) historyPanel.close();
+});
+newChat.addEventListener("click", resetConversation);
+loadHistory();

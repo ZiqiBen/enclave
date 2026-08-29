@@ -16,6 +16,7 @@
           <span>ENCLAVE</span>
         </a>
         <div class="top-actions">
+          <button class="history-button" id="history-open" type="button">History</button>
           <button class="library-button" id="library-open" type="button">Knowledge base <span id="document-count">0</span></button>
           <div class="status" id="status" role="status">
             <span class="status-dot"></span>
@@ -72,6 +73,18 @@
       </form>
       <p class="upload-message" id="upload-message" role="status"></p>
       <div class="document-list" id="document-list"></div>
+    </dialog>
+
+    <dialog class="history-panel" id="history-panel">
+      <div class="library-head">
+        <div>
+          <p class="eyebrow">LOCAL CONVERSATIONS</p>
+          <h2>History</h2>
+        </div>
+        <button class="close-button" id="history-close" type="button" aria-label="Close history">×</button>
+      </div>
+      <button class="new-chat" id="new-chat" type="button">＋ New conversation</button>
+      <div class="history-list" id="history-list"></div>
     </dialog>
 
     <template id="loading-template">

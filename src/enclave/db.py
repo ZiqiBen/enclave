@@ -72,6 +72,7 @@ def reset(conn: psycopg.Connection) -> None:
     """Drop everything. Test fixtures only -- never call from app code."""
     with conn.cursor() as cur:
         cur.execute(
-            "DROP TABLE IF EXISTS ingest_jobs, feedback, chunks, documents, "
+            "DROP TABLE IF EXISTS conversation_messages, conversations, "
+            "ingest_jobs, feedback, chunks, documents, "
             "eval_runs, schema_migrations CASCADE"
         )

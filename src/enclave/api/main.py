@@ -30,6 +30,15 @@ from starlette.staticfiles import StaticFiles
 from enclave import db
 from enclave.answer import VerifiedAnswer, answer_with_verification
 from enclave.config import settings
+from enclave.history import (
+    ConversationMessage,
+    ConversationSummary,
+    conversation_exists,
+    delete_conversation,
+    get_conversation,
+    list_conversations,
+    save_exchange,
+)
 from enclave.ingest.jobs import (
     IngestJob,
     create_job,
@@ -67,6 +76,7 @@ class QueryRequest(BaseModel):
 
     query: str = Field(min_length=1, max_length=4000)
     top_k: int = Field(default=5, ge=1, le=20)
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class EvidenceResponse(BaseModel):
@@ -113,6 +123,7 @@ class ClaimResponse(BaseModel):
 
 
 class QueryResponse(SearchResponse):
+    conversation_id: str | None = None
     answer: str
     citations: list[CitationResponse]
     insufficient_evidence: bool
@@ -148,8 +159,38 @@ class IngestJobResponse(BaseModel):
     updated_at: datetime
 
 
+class ConversationSummaryResponse(BaseModel):
+    conversation_id: str
+    title: str
+    message_count: int
+    preview: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConversationMessageResponse(BaseModel):
+    id: int
+    role: str
+    content: str
+    metadata: dict
+    created_at: datetime
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    messages: list[ConversationMessageResponse]
+
+
 def _job_response(job: IngestJob) -> IngestJobResponse:
     return IngestJobResponse(**asdict(job))
+
+
+def _conversation_summary(item: ConversationSummary) -> ConversationSummaryResponse:
+    return ConversationSummaryResponse(**asdict(item))
+
+
+def _conversation_message(item: ConversationMessage) -> ConversationMessageResponse:
+    return ConversationMessageResponse(**asdict(item))
 
 
 def _default_search(conn, query: str, limit: int) -> RankedEvidence:
@@ -271,6 +312,12 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/v1/query", response_model=QueryResponse)
     def query(body: QueryRequest, conn: Connection) -> QueryResponse:
+        if (
+            not injected_services
+            and body.conversation_id
+            and not conversation_exists(conn, body.conversation_id)
+        ):
+            raise HTTPException(status_code=404, detail="conversation not found")
         runner = app.state.services.query or _default_query
         started = time.perf_counter()
         ranked, verified = runner(conn, body.query, body.top_k)
@@ -281,7 +328,7 @@ def create_app(services: Services | None = None) -> FastAPI:
             if answer.total_duration_ns is not None
             else None
         )
-        return QueryResponse(
+        response = QueryResponse(
             query=body.query,
             evidence=_evidence(ranked),
             reranked=ranked.reranked,
@@ -318,6 +365,38 @@ def create_app(services: Services | None = None) -> FastAPI:
             model=answer.model,
             generation_duration_ms=duration,
         )
+        if not injected_services:
+            identifier = save_exchange(
+                conn,
+                conversation_id=body.conversation_id,
+                query=body.query,
+                answer=answer.text,
+                metadata=response.model_dump(mode="json"),
+            )
+            response = response.model_copy(update={"conversation_id": identifier})
+        return response
+
+    @app.get("/v1/conversations", response_model=list[ConversationSummaryResponse])
+    def conversations(conn: Connection) -> list[ConversationSummaryResponse]:
+        return [_conversation_summary(item) for item in list_conversations(conn)]
+
+    @app.get("/v1/conversations/{conversation_id}", response_model=ConversationResponse)
+    def conversation(conversation_id: str, conn: Connection) -> ConversationResponse:
+        messages = get_conversation(conn, conversation_id)
+        if messages is None:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        return ConversationResponse(
+            conversation_id=conversation_id,
+            messages=[_conversation_message(item) for item in messages],
+        )
+
+    @app.delete(
+        "/v1/conversations/{conversation_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def remove_conversation(conversation_id: str, conn: Connection) -> None:
+        if not delete_conversation(conn, conversation_id):
+            raise HTTPException(status_code=404, detail="conversation not found")
 
     @app.post(
         "/v1/feedback",

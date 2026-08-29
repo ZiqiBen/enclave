@@ -76,6 +76,11 @@ documents (20 MB maximum), follow background parsing/embedding progress, and
 delete an uploaded document together with its indexed chunks. Uploaded source
 files stay under the ignored local `data/uploads/` directory.
 
+Every successful query is saved to PostgreSQL as a local conversation. Use
+**History** to reopen the exact answer/evidence snapshot, continue the same
+conversation, start a new one, or delete it. Reopening history never reruns a
+model call.
+
 The query response includes server-side stage timings so local deployments can
 be tuned without guessing:
 
