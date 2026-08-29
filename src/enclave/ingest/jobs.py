@@ -39,12 +39,14 @@ def safe_filename(raw: str) -> str:
     return name[:180]
 
 
-def create_job(conn, job_id: str, filename: str, stored_path: Path) -> None:
+def create_job(
+    conn, job_id: str, filename: str, stored_path: Path, owner_id: str | None = None
+) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO ingest_jobs (job_id, filename, stored_path, status) "
-            "VALUES (%s, %s, %s, 'queued')",
-            (job_id, filename, str(stored_path)),
+            "INSERT INTO ingest_jobs (job_id, filename, stored_path, status, owner_id) "
+            "VALUES (%s, %s, %s, 'queued', %s)",
+            (job_id, filename, str(stored_path), owner_id),
         )
 
 
@@ -66,7 +68,9 @@ def _set_status(
         )
 
 
-def run_ingest_job(job_id: str, stored_path: Path, database_url: str) -> None:
+def run_ingest_job(
+    job_id: str, stored_path: Path, database_url: str, owner_id: str | None = None
+) -> None:
     """Parse and embed one upload in a worker thread, persisting every state."""
     with db.connect(database_url) as conn:
         try:
@@ -74,7 +78,9 @@ def run_ingest_job(job_id: str, stored_path: Path, database_url: str) -> None:
             from enclave.models.encoders import get_embedder
 
             _set_status(conn, job_id, "embedding", 35)
-            stats = ingest_path(stored_path, conn=conn, embedder=get_embedder())
+            stats = ingest_path(
+                stored_path, conn=conn, embedder=get_embedder(), owner_id=owner_id
+            )
             if stats.failures or not stats.files_ingested:
                 raise ValueError("document did not produce ingestible content")
             _set_status(
@@ -82,34 +88,42 @@ def run_ingest_job(job_id: str, stored_path: Path, database_url: str) -> None:
                 job_id,
                 "complete",
                 100,
-                doc_id=document_id(stored_path.name),
+                doc_id=document_id(stored_path.name, owner_id),
                 chunks_written=stats.chunks_written,
             )
         except Exception as exc:
             _set_status(conn, job_id, "failed", 100, error=str(exc)[:500])
 
 
-def _rows(conn, *, job_id: str | None = None) -> list[IngestJob]:
+def _rows(
+    conn, *, job_id: str | None = None, owner_id: str | None = None
+) -> list[IngestJob]:
     sql = (
         "SELECT job_id, filename, status, progress, doc_id, chunks_written, "
         "error, created_at, updated_at FROM ingest_jobs"
     )
-    params = ()
+    filters = []
+    params: tuple = ()
     if job_id is not None:
-        sql += " WHERE job_id = %s"
-        params = (job_id,)
+        filters.append("job_id = %s")
+        params += (job_id,)
+    if owner_id is not None:
+        filters.append("owner_id = %s")
+        params += (owner_id,)
+    if filters:
+        sql += " WHERE " + " AND ".join(filters)
     sql += " ORDER BY created_at DESC"
     with conn.cursor() as cur:
         cur.execute(sql, params)
         return [IngestJob(*row) for row in cur.fetchall()]
 
 
-def list_jobs(conn) -> list[IngestJob]:
-    return _rows(conn)
+def list_jobs(conn, owner_id: str | None = None) -> list[IngestJob]:
+    return _rows(conn, owner_id=owner_id)
 
 
-def get_job(conn, job_id: str) -> IngestJob | None:
-    rows = _rows(conn, job_id=job_id)
+def get_job(conn, job_id: str, owner_id: str | None = None) -> IngestJob | None:
+    rows = _rows(conn, job_id=job_id, owner_id=owner_id)
     return rows[0] if rows else None
 
 
@@ -124,11 +138,14 @@ def fail_interrupted_jobs(conn) -> int:
         return cur.rowcount
 
 
-def delete_job(conn, job_id: str, upload_root: Path) -> bool:
+def delete_job(
+    conn, job_id: str, upload_root: Path, owner_id: str | None = None
+) -> bool:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT stored_path, status, doc_id FROM ingest_jobs WHERE job_id=%s",
-            (job_id,),
+            "SELECT stored_path, status, doc_id FROM ingest_jobs "
+            "WHERE job_id=%s AND (%s::text IS NULL OR owner_id=%s::text)",
+            (job_id, owner_id, owner_id),
         )
         row = cur.fetchone()
         if row is None:

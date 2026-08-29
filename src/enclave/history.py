@@ -28,11 +28,14 @@ class ConversationMessage:
     created_at: datetime
 
 
-def conversation_exists(conn, conversation_id: str) -> bool:
+def conversation_exists(
+    conn, conversation_id: str, owner_id: str | None = None
+) -> bool:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT EXISTS(SELECT 1 FROM conversations WHERE conversation_id=%s)",
-            (conversation_id,),
+            "SELECT EXISTS(SELECT 1 FROM conversations WHERE conversation_id=%s "
+            "AND (%s::text IS NULL OR owner_id=%s::text))",
+            (conversation_id, owner_id, owner_id),
         )
         return bool(cur.fetchone()[0])
 
@@ -44,6 +47,7 @@ def save_exchange(
     query: str,
     answer: str,
     metadata: dict,
+    owner_id: str | None = None,
 ) -> str:
     """Atomically create/continue a conversation and save both messages."""
     identifier = conversation_id or uuid.uuid4().hex
@@ -51,13 +55,15 @@ def save_exchange(
         if conversation_id is None:
             title = query.strip().replace("\n", " ")[:80]
             cur.execute(
-                "INSERT INTO conversations (conversation_id, title) VALUES (%s, %s)",
-                (identifier, title),
+                "INSERT INTO conversations (conversation_id, title, owner_id) "
+                "VALUES (%s, %s, %s)",
+                (identifier, title, owner_id),
             )
         else:
             cur.execute(
-                "SELECT 1 FROM conversations WHERE conversation_id=%s FOR UPDATE",
-                (identifier,),
+                "SELECT 1 FROM conversations WHERE conversation_id=%s "
+                "AND (%s::text IS NULL OR owner_id=%s::text) FOR UPDATE",
+                (identifier, owner_id, owner_id),
             )
             if cur.fetchone() is None:
                 raise KeyError(identifier)
@@ -79,7 +85,7 @@ def save_exchange(
     return identifier
 
 
-def list_conversations(conn) -> list[ConversationSummary]:
+def list_conversations(conn, owner_id: str | None = None) -> list[ConversationSummary]:
     with conn.cursor() as cur:
         cur.execute(
             "SELECT c.conversation_id, c.title, count(m.id), latest.content, "
@@ -89,14 +95,18 @@ def list_conversations(conn) -> list[ConversationSummary]:
             "LEFT JOIN LATERAL (SELECT content FROM conversation_messages "
             "WHERE conversation_id=c.conversation_id AND role='assistant' "
             "ORDER BY id DESC LIMIT 1) latest ON true "
+            "WHERE (%s::text IS NULL OR c.owner_id=%s::text) "
             "GROUP BY c.conversation_id, latest.content "
-            "ORDER BY c.updated_at DESC"
+            "ORDER BY c.updated_at DESC",
+            (owner_id, owner_id),
         )
         return [ConversationSummary(*row) for row in cur.fetchall()]
 
 
-def get_conversation(conn, conversation_id: str) -> list[ConversationMessage] | None:
-    if not conversation_exists(conn, conversation_id):
+def get_conversation(
+    conn, conversation_id: str, owner_id: str | None = None
+) -> list[ConversationMessage] | None:
+    if not conversation_exists(conn, conversation_id, owner_id):
         return None
     with conn.cursor() as cur:
         cur.execute(
@@ -107,21 +117,31 @@ def get_conversation(conn, conversation_id: str) -> list[ConversationMessage] | 
         return [ConversationMessage(*row) for row in cur.fetchall()]
 
 
-def user_queries(conn, conversation_id: str, limit: int = 8) -> list[str]:
+def user_queries(
+    conn, conversation_id: str, limit: int = 8, owner_id: str | None = None
+) -> list[str]:
     """Return recent user questions in chronological order for context repair."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT content FROM (SELECT id, content FROM conversation_messages "
-            "WHERE conversation_id=%s AND role='user' ORDER BY id DESC LIMIT %s) q "
+            "WHERE conversation_id=%s AND role='user' "
+            "AND EXISTS (SELECT 1 FROM conversations c WHERE "
+            "c.conversation_id=conversation_messages.conversation_id "
+            "AND (%s::text IS NULL OR c.owner_id=%s::text)) "
+            "ORDER BY id DESC LIMIT %s) q "
             "ORDER BY id",
-            (conversation_id, limit),
+            (conversation_id, owner_id, owner_id, limit),
         )
         return [row[0] for row in cur.fetchall()]
 
 
-def delete_conversation(conn, conversation_id: str) -> bool:
+def delete_conversation(
+    conn, conversation_id: str, owner_id: str | None = None
+) -> bool:
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM conversations WHERE conversation_id=%s", (conversation_id,)
+            "DELETE FROM conversations WHERE conversation_id=%s "
+            "AND (%s::text IS NULL OR owner_id=%s::text)",
+            (conversation_id, owner_id, owner_id),
         )
         return bool(cur.rowcount)

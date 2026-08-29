@@ -21,7 +21,66 @@ const historyOpen = document.querySelector("#history-open");
 const historyClose = document.querySelector("#history-close");
 const historyList = document.querySelector("#history-list");
 const newChat = document.querySelector("#new-chat");
+const loginPanel = document.querySelector("#login-panel");
+const loginForm = document.querySelector("#login-form");
+const loginButton = document.querySelector("#login-button");
+const loginError = document.querySelector("#login-error");
+const accountButton = document.querySelector("#account-button");
 let currentConversationId = null;
+
+function showLogin() {
+  accountButton.hidden = true;
+  if (!loginPanel.open) loginPanel.showModal();
+  document.querySelector("#login-username").focus();
+}
+
+function enterApp(user) {
+  if (loginPanel.open) loginPanel.close();
+  accountButton.textContent = `${user.username} · Sign out`;
+  accountButton.hidden = false;
+  loadDocuments();
+  loadHistory();
+}
+
+async function bootstrap() {
+  try {
+    const response = await fetch("/v1/auth/me");
+    if (!response.ok) return showLogin();
+    enterApp(await response.json());
+  } catch {
+    showLogin();
+  }
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  loginButton.disabled = true;
+  loginError.textContent = "";
+  const fields = new FormData(loginForm);
+  try {
+    const response = await fetch("/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: fields.get("username"), password: fields.get("password") }),
+    });
+    if (!response.ok) throw new Error("Incorrect username or password.");
+    loginForm.reset();
+    enterApp(await response.json());
+  } catch (error) {
+    loginError.textContent = error.message;
+  } finally {
+    loginButton.disabled = false;
+  }
+});
+
+accountButton.addEventListener("click", async () => {
+  await fetch("/v1/auth/logout", { method: "POST" });
+  currentConversationId = null;
+  conversation.replaceChildren();
+  documentList.replaceChildren();
+  historyList.replaceChildren();
+  showLogin();
+});
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -281,7 +340,7 @@ uploadForm.addEventListener("submit", async (event) => {
   }
 });
 
-loadDocuments();
+bootstrap();
 
 function resetConversation() {
   currentConversationId = null;

@@ -260,3 +260,28 @@ ANALYZE was rank 9. Always reranking only contextual queries moved it to rank 2,
 raised MRR from 0.901 to 0.964, and retained a 100% retrieval hit rate. Rerank
 rate rose to 62.5%, mean retrieval latency to 3.09 seconds, and P95 to 10.98
 seconds; these costs are preserved in the benchmark rather than omitted.
+
+## Local multi-user authentication and isolation
+
+The application now has local accounts without a public registration route.
+Passwords are derived with scrypt and unique salts; browser sessions use
+random opaque tokens whose SHA-256 hashes, rather than the tokens themselves,
+are stored in PostgreSQL. The cookie is HttpOnly and SameSite=Strict, has a
+configurable lifetime, and can be marked Secure when the application is put
+behind HTTPS. Repeated failed logins are limited per username and source.
+
+Ownership is enforced at every data boundary rather than only hidden in the
+interface. Hybrid lexical/vector retrieval joins through the owning document;
+conversation reads and writes, upload job status and deletion, document
+deletion, and feedback insertion all require the current user. Document IDs
+include the owner so two accounts may upload the same filename, and chunk hash
+deduplication is now scoped to a document so identical content in separate
+accounts is valid. Existing unowned data stays invisible after migration until
+an administrator deliberately runs account creation with `--claim-existing`.
+
+Security regression tests exercise password verification, unauthenticated
+rejection, protected session-cookie attributes, logout invalidation, and two
+accounts searching the same term without seeing each other's chunks or
+conversation history. The complete suite and lint checks pass on the isolated
+feature branch. The development database was intentionally not migrated before
+an administrator password was chosen, preventing an accidental local lockout.

@@ -51,8 +51,9 @@ def _source_path(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
-def document_id(source_path: str) -> str:
-    return hashlib.sha256(source_path.encode("utf-8")).hexdigest()
+def document_id(source_path: str, owner_id: str | None = None) -> str:
+    identity = f"{owner_id}\0{source_path}" if owner_id else source_path
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
 def _write_document(
@@ -64,17 +65,18 @@ def _write_document(
     doc_type: str,
     chunks: list[Chunk],
     vectors,
+    owner_id: str | None = None,
 ) -> tuple[int, int]:
     written = 0
     duplicates = 0
     with conn.transaction(), conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO documents (doc_id, source_path, title, doc_type) "
-            "VALUES (%s, %s, %s, %s) "
+            "INSERT INTO documents (doc_id, source_path, title, doc_type, owner_id) "
+            "VALUES (%s, %s, %s, %s, %s) "
             "ON CONFLICT (doc_id) DO UPDATE SET "
             "source_path = EXCLUDED.source_path, title = EXCLUDED.title, "
             "doc_type = EXCLUDED.doc_type, ingested_at = now()",
-            (doc_id, source_path, title, doc_type),
+            (doc_id, source_path, title, doc_type, owner_id),
         )
         cur.execute("DELETE FROM chunks WHERE doc_id = %s", (doc_id,))
         for index, chunk in enumerate(chunks):
@@ -84,7 +86,7 @@ def _write_document(
                 "(doc_id, ordinal, heading_path, content, content_hash, "
                 "token_count, embedding) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s::vector) "
-                "ON CONFLICT (content_hash) DO NOTHING",
+                "ON CONFLICT (doc_id, content_hash) DO NOTHING",
                 (
                     doc_id,
                     chunk.ordinal,
@@ -111,6 +113,7 @@ def ingest_path(
     overlap_words: int = 40,
     batch_size: int = 16,
     continue_on_error: bool = False,
+    owner_id: str | None = None,
 ) -> IngestStats:
     """Parse, chunk, embed, and atomically persist every supported file."""
     root = source.expanduser().resolve()
@@ -149,12 +152,13 @@ def ingest_path(
             relative_path = _source_path(path, root)
             written, duplicates = _write_document(
                 conn,
-                doc_id=document_id(relative_path),
+                doc_id=document_id(relative_path, owner_id),
                 source_path=relative_path,
                 title=parsed.title,
                 doc_type=parsed.doc_type,
                 chunks=chunks,
                 vectors=vectors,
+                owner_id=owner_id,
             )
             stats.files_ingested += 1
             stats.chunks_written += written
@@ -176,6 +180,10 @@ def _command(
     overlap_words: Annotated[int, typer.Option(min=0)] = 40,
     batch_size: Annotated[int, typer.Option(min=1)] = 16,
     continue_on_error: Annotated[bool, typer.Option("--continue-on-error")] = False,
+    owner: Annotated[
+        str | None,
+        typer.Option("--owner", help="Username that owns the imported documents."),
+    ] = None,
 ) -> None:
     """Ingest local documents into Enclave."""
     if overlap_words >= max_words:
@@ -188,6 +196,18 @@ def _command(
         embedder = get_embedder()
 
     with db.connect() as conn:
+        owner_id = None
+        if owner:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT user_id FROM users WHERE username=lower(%s) "
+                    "AND disabled=false",
+                    (owner,),
+                )
+                row = cur.fetchone()
+            if row is None:
+                raise typer.BadParameter("unknown username", param_hint="owner")
+            owner_id = row[0]
         stats = ingest_path(
             source,
             conn=conn,
@@ -196,6 +216,7 @@ def _command(
             overlap_words=overlap_words,
             batch_size=batch_size,
             continue_on_error=continue_on_error,
+            owner_id=owner_id,
         )
 
     Console().print(

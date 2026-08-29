@@ -187,7 +187,7 @@ def test_feedback_is_persisted_and_returns_identifier():
     assert response.json() == {"id": 41}
     query, params = conn.fake_cursor.executions[-1]
     assert "INSERT INTO feedback" in query
-    assert params == ("policy", 7, 1, True, "rerank")
+    assert params == ("policy", 1, True, "rerank", "test-user", 7, "test-user")
 
 
 def test_request_validation_rejects_empty_query_and_large_top_k():

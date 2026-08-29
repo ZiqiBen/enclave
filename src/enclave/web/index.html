@@ -18,6 +18,7 @@
         <div class="top-actions">
           <button class="history-button" id="history-open" type="button">History</button>
           <button class="library-button" id="library-open" type="button">Knowledge base <span id="document-count">0</span></button>
+          <button class="account-button" id="account-button" type="button" hidden></button>
           <div class="status" id="status" role="status">
             <span class="status-dot"></span>
             <span id="status-text">Connecting</span>
@@ -73,6 +74,21 @@
       </form>
       <p class="upload-message" id="upload-message" role="status"></p>
       <div class="document-list" id="document-list"></div>
+    </dialog>
+
+    <dialog class="login-panel" id="login-panel">
+      <form class="login-form" id="login-form">
+        <span class="brand-mark login-mark">E</span>
+        <p class="eyebrow">PRIVATE ACCESS</p>
+        <h2>Sign in to Enclave</h2>
+        <p>Your documents, searches, and conversations stay separate from every other account.</p>
+        <label for="login-username">Username</label>
+        <input id="login-username" name="username" autocomplete="username" required />
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+        <button class="upload-button" id="login-button" type="submit">Sign in</button>
+        <p class="login-error" id="login-error" role="alert"></p>
+      </form>
     </dialog>
 
     <dialog class="history-panel" id="history-panel">
