@@ -155,7 +155,7 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def cli_create_user(
+def _create_user_command(
     username: str = typer.Argument(...),
     admin: bool = typer.Option(False, "--admin"),
     claim_existing: bool = typer.Option(False, "--claim-existing"),
@@ -171,3 +171,8 @@ def cli_create_user(
             conn, username, password, is_admin=admin, claim_existing=claim_existing
         )
     typer.echo(f"created user {user.username}")
+
+
+def cli_create_user() -> None:
+    """Package entry point for the local account-creation command."""
+    typer.run(_create_user_command)
