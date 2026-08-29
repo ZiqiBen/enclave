@@ -30,6 +30,7 @@ from starlette.staticfiles import StaticFiles
 from enclave import db
 from enclave.answer import VerifiedAnswer, answer_with_verification
 from enclave.config import settings
+from enclave.context import resolve_question
 from enclave.history import (
     ConversationMessage,
     ConversationSummary,
@@ -38,6 +39,7 @@ from enclave.history import (
     get_conversation,
     list_conversations,
     save_exchange,
+    user_queries,
 )
 from enclave.ingest.jobs import (
     IngestJob,
@@ -124,6 +126,8 @@ class ClaimResponse(BaseModel):
 
 class QueryResponse(SearchResponse):
     conversation_id: str | None = None
+    resolved_query: str | None = None
+    contextualized: bool = False
     answer: str
     citations: list[CitationResponse]
     insufficient_evidence: bool
@@ -198,9 +202,9 @@ def _default_search(conn, query: str, limit: int) -> RankedEvidence:
 
 
 def _default_query(
-    conn, query: str, limit: int
+    conn, query: str, limit: int, *, force_rerank: bool | None = None
 ) -> tuple[RankedEvidence, VerifiedAnswer]:
-    ranked = retrieve_and_rank(conn, query, limit=limit)
+    ranked = retrieve_and_rank(conn, query, limit=limit, force=force_rerank)
     verified = answer_with_verification(query, ranked.candidates)
     return ranked, verified
 
@@ -318,9 +322,24 @@ def create_app(services: Services | None = None) -> FastAPI:
             and not conversation_exists(conn, body.conversation_id)
         ):
             raise HTTPException(status_code=404, detail="conversation not found")
-        runner = app.state.services.query or _default_query
+        previous_queries = (
+            user_queries(conn, body.conversation_id)
+            if not injected_services and body.conversation_id
+            else []
+        )
+        resolved = resolve_question(body.query, previous_queries)
         started = time.perf_counter()
-        ranked, verified = runner(conn, body.query, body.top_k)
+        if app.state.services.query is not None:
+            ranked, verified = app.state.services.query(
+                conn, resolved.retrieval_query, body.top_k
+            )
+        else:
+            ranked, verified = _default_query(
+                conn,
+                resolved.retrieval_query,
+                body.top_k,
+                force_rerank=True if resolved.contextualized else None,
+            )
         total_ms = (time.perf_counter() - started) * 1000
         answer = verified.answer
         duration = (
@@ -330,6 +349,10 @@ def create_app(services: Services | None = None) -> FastAPI:
         )
         response = QueryResponse(
             query=body.query,
+            resolved_query=(
+                resolved.retrieval_query if resolved.contextualized else None
+            ),
+            contextualized=resolved.contextualized,
             evidence=_evidence(ranked),
             reranked=ranked.reranked,
             retrieved_count=ranked.retrieved_count,

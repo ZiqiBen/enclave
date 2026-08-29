@@ -1,0 +1,132 @@
+[
+  {
+    "name": "mvcc pronoun",
+    "history": ["What is MVCC in PostgreSQL?"],
+    "query": "How does it prevent readers from blocking writers?",
+    "should_contextualize": true,
+    "expected_anchor": "What is MVCC in PostgreSQL?",
+    "relevant_terms": ["reading never blocks writing", "multiversion concurrency control"]
+  },
+  {
+    "name": "gin pronoun",
+    "history": ["When should I use a GIN index?"],
+    "query": "What kinds of values is it useful for?",
+    "should_contextualize": true,
+    "expected_anchor": "When should I use a GIN index?",
+    "relevant_terms": ["composite values", "arrays", "jsonb"]
+  },
+  {
+    "name": "vacuum pronoun",
+    "history": ["How does VACUUM work?"],
+    "query": "When should I run it manually?",
+    "should_contextualize": true,
+    "expected_anchor": "How does VACUUM work?",
+    "relevant_terms": ["VACUUM", "routine vacuuming"]
+  },
+  {
+    "name": "explain continuation",
+    "history": ["How can I inspect a SQL query execution plan?"],
+    "query": "What about actually running the statement?",
+    "should_contextualize": true,
+    "expected_anchor": "How can I inspect a SQL query execution plan?",
+    "relevant_terms": ["EXPLAIN ANALYZE", "actually executes the command"]
+  },
+  {
+    "name": "isolation pronoun",
+    "history": ["What transaction isolation levels does PostgreSQL support?"],
+    "query": "Which one is the default?",
+    "should_contextualize": true,
+    "expected_anchor": "What transaction isolation levels does PostgreSQL support?",
+    "relevant_terms": ["Read Committed is the default", "read committed"]
+  },
+  {
+    "name": "cluster pronoun",
+    "history": ["What is a PostgreSQL database cluster?"],
+    "query": "What does it contain?",
+    "should_contextualize": true,
+    "expected_anchor": "What is a PostgreSQL database cluster?",
+    "relevant_terms": ["one or more named databases", "database cluster"]
+  },
+  {
+    "name": "full text pronoun",
+    "history": ["How does PostgreSQL full text search process documents?"],
+    "query": "What data type stores its processed tokens?",
+    "should_contextualize": true,
+    "expected_anchor": "How does PostgreSQL full text search process documents?",
+    "relevant_terms": ["tsvector", "sorted list of distinct lexemes"]
+  },
+  {
+    "name": "two followups choose standalone anchor",
+    "history": ["What is MVCC in PostgreSQL?", "How does it work?"],
+    "query": "And why is that useful?",
+    "should_contextualize": true,
+    "expected_anchor": "What is MVCC in PostgreSQL?",
+    "relevant_terms": ["reading never blocks writing", "transaction isolation"]
+  },
+  {
+    "name": "independent vacuum switch",
+    "history": ["What is MVCC in PostgreSQL?"],
+    "query": "How does VACUUM reclaim storage?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["VACUUM", "dead row"]
+  },
+  {
+    "name": "independent mvcc switch",
+    "history": ["When should I use a GIN index?"],
+    "query": "What is MVCC in PostgreSQL?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["multiversion concurrency control", "MVCC"]
+  },
+  {
+    "name": "independent create database switch",
+    "history": ["What is a PostgreSQL database cluster?"],
+    "query": "How do I create a new database?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["CREATE DATABASE", "createdb"]
+  },
+  {
+    "name": "independent gin switch",
+    "history": ["How does VACUUM work?"],
+    "query": "When should I use a GIN index?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["GIN index", "Generalized Inverted Index"]
+  },
+  {
+    "name": "independent isolation switch",
+    "history": ["How does EXPLAIN work?"],
+    "query": "What transaction isolation levels does PostgreSQL support?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["transaction isolation", "serializable"]
+  },
+  {
+    "name": "standalone pronoun without history",
+    "history": [],
+    "query": "How does it work?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": [],
+    "answerable": false
+  },
+  {
+    "name": "explicit new topic containing this",
+    "history": ["What is MVCC in PostgreSQL?"],
+    "query": "What is this database cluster concept?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": ["database cluster"]
+  },
+  {
+    "name": "explicit new topic containing it",
+    "history": ["How does VACUUM work?"],
+    "query": "What is Git in software development?",
+    "should_contextualize": false,
+    "expected_anchor": null,
+    "relevant_terms": [],
+    "answerable": false
+  }
+]

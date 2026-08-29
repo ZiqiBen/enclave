@@ -232,3 +232,31 @@ saved evidence passages. Listing history took 8.8 ms, reopening returned the
 stored verification/evidence snapshot without inference, deletion returned
 HTTP 204, and the list returned to zero. At this milestone the complete suite
 contains 113 passing tests.
+
+## Deterministic contextual follow-ups
+
+Ambiguous pronoun and continuation questions are resolved without another LLM
+call. A small deterministic classifier detects references such as “it”, “that”,
+and “what about”; it then finds the latest standalone user question and builds
+an explicit previous-topic plus follow-up retrieval query. The original user
+message is preserved in history, while the API exposes whether context was used
+and the exact resolved query for debugging.
+
+Two real multi-turn checks passed claim verification. “What is MVCC in
+PostgreSQL?” followed by “How does it prevent readers from blocking writers?”
+resolved to MVCC, retrieved the concurrency-control Introduction section, and
+answered with non-blocking read/write evidence in 6.89 seconds. “When should I
+use a GIN index?” followed by “What kinds of values is it useful for?” resolved
+to GIN and answered arrays/JSON composite values with four citations. That
+second follow-up took 16.47 seconds, exposing ongoing memory/model contention
+that remains a performance target.
+
+The formal conversational set contains 16 positive and negative cases. The
+first run exposed two rule errors (87.5% decision and anchor accuracy): “Which
+one” was not recognized, while an explicit “this database cluster” topic was
+incorrectly bound to history. After targeted general rules, both metrics reached
+100%. Relevant evidence was present for every answerable case, but EXPLAIN
+ANALYZE was rank 9. Always reranking only contextual queries moved it to rank 2,
+raised MRR from 0.901 to 0.964, and retained a 100% retrieval hit rate. Rerank
+rate rose to 62.5%, mean retrieval latency to 3.09 seconds, and P95 to 10.98
+seconds; these costs are preserved in the benchmark rather than omitted.

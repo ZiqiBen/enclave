@@ -81,6 +81,22 @@ Every successful query is saved to PostgreSQL as a local conversation. Use
 conversation, start a new one, or delete it. Reopening history never reruns a
 model call.
 
+Pronoun and continuation follow-ups such as “How does it prevent blocking?”
+are resolved against the latest standalone user question in that conversation.
+The resolved retrieval query is exposed in the API and the interface marks the
+answer with **Context used**; standalone questions are never rewritten.
+Contextualized queries always use the reranker because ambiguity makes a
+single-channel winner less trustworthy; standalone queries retain the measured
+selective-rerank policy.
+
+Evaluate the resolver and its downstream retrieval against positive and
+negative multi-turn cases with:
+
+```bash
+uv run enclave-eval-context \
+  --output benchmarks/raw/postgres-conversations.json
+```
+
 The query response includes server-side stage timings so local deployments can
 be tuned without guessing:
 

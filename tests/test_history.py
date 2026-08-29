@@ -8,6 +8,7 @@ from enclave.history import (
     get_conversation,
     list_conversations,
     save_exchange,
+    user_queries,
 )
 
 
@@ -41,6 +42,10 @@ def test_conversation_lifecycle_persists_metadata_and_cascades(db_conn):
         metadata={"verified": True},
     )
     assert len(get_conversation(db_conn, identifier)) == 4
+    assert user_queries(db_conn, identifier) == [
+        "What is PostgreSQL?",
+        "And what is a cluster?",
+    ]
     assert list_conversations(db_conn)[0].preview == "A group of databases [E1]."
 
     assert delete_conversation(db_conn, identifier) is True

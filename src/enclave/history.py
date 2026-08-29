@@ -107,6 +107,18 @@ def get_conversation(conn, conversation_id: str) -> list[ConversationMessage] | 
         return [ConversationMessage(*row) for row in cur.fetchall()]
 
 
+def user_queries(conn, conversation_id: str, limit: int = 8) -> list[str]:
+    """Return recent user questions in chronological order for context repair."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT content FROM (SELECT id, content FROM conversation_messages "
+            "WHERE conversation_id=%s AND role='user' ORDER BY id DESC LIMIT %s) q "
+            "ORDER BY id",
+            (conversation_id, limit),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
 def delete_conversation(conn, conversation_id: str) -> bool:
     with conn.cursor() as cur:
         cur.execute(

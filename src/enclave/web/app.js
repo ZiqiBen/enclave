@@ -73,6 +73,7 @@ function addMetrics(card, data, question) {
   const row = element("div", "meta-row");
   row.append(element("span", `metric ${data.verified ? "verified" : ""}`, data.verified ? "✓ Verified" : "Review needed"));
   row.append(element("span", "metric", data.reranked ? "Reranked" : "Rerank skipped"));
+  if (data.contextualized) row.append(element("span", "metric verified", "Context used"));
   row.append(element("span", "metric", `Search ${formatMs(data.timings?.retrieval_ms)}`));
   row.append(element("span", "metric", `Answer ${formatMs(data.timings?.generation_ms)}`));
   row.append(element("span", "metric", `Total ${formatMs(data.timings?.total_ms)}`));

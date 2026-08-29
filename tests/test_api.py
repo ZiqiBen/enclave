@@ -167,6 +167,8 @@ def test_query_returns_answer_citations_and_claim_verification():
     assert body["timings"]["total_ms"] >= 0
     assert body["model"] == "qwen3:4b"
     assert body["conversation_id"] is None
+    assert body["contextualized"] is False
+    assert body["resolved_query"] is None
 
 
 def test_feedback_is_persisted_and_returns_identifier():
