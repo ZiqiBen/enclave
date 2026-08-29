@@ -1,5 +1,8 @@
 # Enclave
 
+[![CI](https://github.com/ZiqiBen/enclave/actions/workflows/ci.yml/badge.svg)](https://github.com/ZiqiBen/enclave/actions/workflows/ci.yml)
+[![Production container](https://github.com/ZiqiBen/enclave/actions/workflows/container.yml/badge.svg)](https://github.com/ZiqiBen/enclave/actions/workflows/container.yml)
+
 **Zero-egress retrieval and answer engine. Open weights only. Windows, macOS and Linux from one codebase.**
 
 Every model weight runs on the machine serving the request. No inference API, no managed vector database, no telemetry. That is a product requirement — the target customers cannot let documents leave their network — not a budget compromise.

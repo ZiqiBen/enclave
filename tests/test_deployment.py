@@ -40,6 +40,13 @@ def test_container_runs_as_non_root_and_never_copies_model_cache():
     assert ".env" in ignore
 
 
+def test_ci_builds_the_production_container_without_publishing_it():
+    workflow = (ROOT / ".github/workflows/container.yml").read_text(encoding="utf-8")
+    assert "docker/build-push-action@10e90e" in workflow
+    assert "platforms: linux/amd64" in workflow
+    assert "push: false" in workflow
+
+
 def test_preflight_rejects_placeholder_configuration(monkeypatch, tmp_path):
     monkeypatch.setenv("ENCLAVE_DOMAIN", "enclave.example.com")
     monkeypatch.setenv("POSTGRES_PASSWORD", "replace-with-a-password")

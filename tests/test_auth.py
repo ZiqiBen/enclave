@@ -26,16 +26,17 @@ def test_password_hash_round_trip_and_rejects_short_passwords():
 @pytest.mark.db
 def test_authentication_cookie_and_protected_endpoint(db_conn):
     create_user(db_conn, "alice", "alice-password-123")
-    app = create_app(
-        Services(connect=lambda: nullcontext(db_conn)), require_auth=True
-    )
+    app = create_app(Services(connect=lambda: nullcontext(db_conn)), require_auth=True)
     with TestClient(app) as client:
         assert client.get("/v1/auth/me").status_code == 401
         assert client.get("/v1/documents").status_code == 401
-        assert client.post(
-            "/v1/auth/login",
-            json={"username": "alice", "password": "wrong-password"},
-        ).status_code == 401
+        assert (
+            client.post(
+                "/v1/auth/login",
+                json={"username": "alice", "password": "wrong-password"},
+            ).status_code
+            == 401
+        )
         response = client.post(
             "/v1/auth/login",
             json={"username": "Alice", "password": "alice-password-123"},
@@ -79,11 +80,12 @@ def test_two_users_cannot_read_each_others_search_or_conversations(db_conn):
         owner_id=alice.user_id,
     )
 
-    assert [item.doc_id for item in lexical_search(
-        db_conn, "orchid", owner_id=alice.user_id
-    )] == ["alice-doc"]
-    assert [item.doc_id for item in lexical_search(
-        db_conn, "orchid", owner_id=bob.user_id
-    )] == ["bob-doc"]
+    assert [
+        item.doc_id
+        for item in lexical_search(db_conn, "orchid", owner_id=alice.user_id)
+    ] == ["alice-doc"]
+    assert [
+        item.doc_id for item in lexical_search(db_conn, "orchid", owner_id=bob.user_id)
+    ] == ["bob-doc"]
     assert len(list_conversations(db_conn, alice.user_id)) == 1
     assert list_conversations(db_conn, bob.user_id) == []

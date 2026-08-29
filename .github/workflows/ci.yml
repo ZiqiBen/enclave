@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,9 +18,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --extra dev
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+      - run: uv sync --frozen --extra dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
 
@@ -24,15 +28,8 @@ jobs:
   # afterthoughts -- a platform-specific bug fails a build here rather than
   # surfacing during a demo.
   #
-  # macos-14 is arm64 (Apple Silicon). Standard runners are free for public
-  # repositories, so all three run on every push. If this repo ever goes
-  # private, restrict macOS with a dynamically built matrix -- the `matrix`
-  # context is NOT available in a job-level `if`, which is a parse error.
-  #
-  # IMPORTANT: hosted runners have no GPU, so this matrix proves
-  # CORRECTNESS everywhere, not speed. Latency is measured locally on both
-  # dev machines and committed to benchmarks/ so regressions show up in a
-  # diff. Do not let a green matrix imply a performance claim.
+  # macos-14 is arm64 (Apple Silicon). Hosted runners have no GPU, so this
+  # matrix proves correctness everywhere, not model performance.
   test:
     strategy:
       fail-fast: false
@@ -40,29 +37,22 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
         with:
           enable-cache: true
-      - run: uv sync --extra dev
+      - run: uv sync --frozen --extra dev
 
       # Device resolution must return something sane on every platform and
-      # must never raise. This is the whole cross-platform abstraction, so
-      # it gets asserted first and printed into the log.
+      # must never raise. This is the whole cross-platform abstraction.
       - name: Resolve device
         run: uv run python -c "from enclave.config import platform_tag; print(platform_tag())"
 
-      # Model-dependent tests are skipped: pulling ~2.5 GB of weights onto
-      # three runners is not worth the minutes, and those run locally.
-      #
-      # The socket-guard tests in tests/test_egress.py ARE unmarked and do
-      # run here -- they assert that no code path even attempts an outbound
-      # connection, which is the portable half of the zero-egress guarantee.
+      # Model weights are intentionally never downloaded by CI.
       - run: uv run pytest -m "not models and not db and not egress"
 
   # Hybrid retrieval is SQL, so it needs a real Postgres with pgvector.
   # Linux only: service containers are not available on macOS runners.
-  # Uses a deterministic fake embedder, so no model weights are needed.
   db-integration:
     runs-on: ubuntu-latest
     services:
@@ -77,21 +67,10 @@ jobs:
           --health-cmd "pg_isready -U enclave -d enclave"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --extra dev
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+      - run: uv sync --frozen --extra dev
       - run: uv run enclave-migrate
-      # "and not models" matters: TestEndToEndOffline carries db, models and
-      # egress markers at once, so a bare `-m db` selects it and it then
-      # tries to load 2.5 GB of weights that no runner has.
+      # This excludes the real-model zero-egress test while retaining every
+      # deterministic database integration test.
       - run: uv run pytest -m "db and not models"
-
-  # TODO(Sprint 4): container-level egress job.
-  #
-  # `docker compose --profile egress-test up` runs the stack on a network
-  # with internal: true (no default route) and answers real queries. It
-  # needs two things that do not exist yet -- a Dockerfile, and a cached
-  # copy of the model weights -- so it is deliberately absent rather than
-  # present and permanently red.
-  #
-  # Until then the portable socket-guard tests above carry the guarantee.

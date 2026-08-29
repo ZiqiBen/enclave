@@ -605,9 +605,7 @@ def create_app(
         return _job_response(job)
 
     @app.delete("/v1/documents/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
-    def remove_document(
-        job_id: str, conn: Connection, user: CurrentUser
-    ) -> None:
+    def remove_document(job_id: str, conn: Connection, user: CurrentUser) -> None:
         try:
             deleted = delete_job(
                 conn, job_id, settings().upload_dir, owner_id=user.user_id
