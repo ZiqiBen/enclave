@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     warm_models: bool = False  # enclave-local enables this before startup
     upload_dir: Path = Path("data/uploads")
     max_upload_mb: int = 20
+    session_hours: int = 24
+    cookie_secure: bool = False  # enable behind HTTPS in a deployed environment
 
     # --- guarantees ---------------------------------------------------
     # When true, model loaders refuse any network fetch and require a

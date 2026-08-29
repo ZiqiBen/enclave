@@ -89,10 +89,11 @@ def retrieve_and_rank(
     batch_size: int = 8,
     reranker: CandidateReranker | None = None,
     force: bool | None = None,
+    owner_id: str | None = None,
 ) -> RankedEvidence:
     """Run hybrid retrieval followed by conditional stage-two reranking."""
     started = time.perf_counter()
-    candidates = hybrid_search(conn, query)
+    candidates = hybrid_search(conn, query, owner_id=owner_id)
     retrieval_duration_ms = (time.perf_counter() - started) * 1000
     ranked = rank_candidates(
         query,

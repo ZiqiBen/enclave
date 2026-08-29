@@ -56,7 +56,8 @@ Then:
 
 ```bash
 uv run enclave-migrate
-uv run enclave-ingest ./corpora/postgres-docs
+uv run enclave-create-user admin --admin --claim-existing
+uv run enclave-ingest ./corpora/postgres-docs --owner admin
 uv run enclave-api
 ```
 
@@ -70,6 +71,14 @@ uv run enclave-local
 
 Open `http://127.0.0.1:8000/` for the end-user chat interface. Swagger remains
 available at `http://127.0.0.1:8000/docs` for API-level testing.
+
+Enclave has no public sign-up route. Create accounts locally with
+`enclave-create-user`; passwords are scrypt-hashed and the command prompts
+without placing them in shell history. Use `--claim-existing` once when
+upgrading an existing installation so its legacy corpus belongs to that
+account. Documents, search results, feedback, upload jobs, and conversations
+are isolated by account. Set `ENCLAVE_COOKIE_SECURE=true` when serving over
+HTTPS; leave it false for `127.0.0.1` development.
 
 Use **Knowledge base** in the top bar to upload PDF, Markdown, HTML, or text
 documents (20 MB maximum), follow background parsing/embedding progress, and

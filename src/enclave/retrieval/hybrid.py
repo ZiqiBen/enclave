@@ -51,16 +51,18 @@ WITH q AS (
 lexical AS (
     SELECT c.id,
            ROW_NUMBER() OVER (ORDER BY ts_rank_cd(c.tsv, q.tsq) DESC) AS rnk
-    FROM chunks c, q
+    FROM chunks c JOIN documents doc ON doc.doc_id=c.doc_id CROSS JOIN q
     WHERE c.tsv @@ q.tsq
+      AND (%(owner_id)s::text IS NULL OR doc.owner_id=%(owner_id)s::text)
     ORDER BY ts_rank_cd(c.tsv, q.tsq) DESC
     LIMIT %(k)s
 ),
 dense AS (
     SELECT c.id,
            ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(vec)s::vector) AS rnk
-    FROM chunks c
+    FROM chunks c JOIN documents doc ON doc.doc_id=c.doc_id
     WHERE c.embedding IS NOT NULL
+      AND (%(owner_id)s::text IS NULL OR doc.owner_id=%(owner_id)s::text)
     ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT %(k)s
 ),
@@ -89,8 +91,9 @@ WITH ranked AS (
                    c.tsv, websearch_to_tsquery('english', %(query)s)
                ) DESC
            ) AS rnk
-    FROM chunks c
+    FROM chunks c JOIN documents doc ON doc.doc_id=c.doc_id
     WHERE c.tsv @@ websearch_to_tsquery('english', %(query)s)
+      AND (%(owner_id)s::text IS NULL OR doc.owner_id=%(owner_id)s::text)
     ORDER BY ts_rank_cd(
         c.tsv, websearch_to_tsquery('english', %(query)s)
     ) DESC
@@ -107,8 +110,9 @@ _DENSE_SQL = """
 WITH ranked AS (
     SELECT c.id,
            ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(vec)s::vector) AS rnk
-    FROM chunks c
+    FROM chunks c JOIN documents doc ON doc.doc_id=c.doc_id
     WHERE c.embedding IS NOT NULL
+      AND (%(owner_id)s::text IS NULL OR doc.owner_id=%(owner_id)s::text)
     ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT %(limit)s
 )
@@ -153,17 +157,26 @@ def _candidates(rows) -> list[Candidate]:
     ]
 
 
-def lexical_search(conn, query: str, limit: int = 10) -> list[Candidate]:
+def lexical_search(
+    conn, query: str, limit: int = 10, owner_id: str | None = None
+) -> list[Candidate]:
     """Postgres full-text retrieval alone, used as an evaluation baseline."""
     with conn.cursor() as cur:
         cur.execute(
             _LEXICAL_SQL,
-            {"query": query, "limit": limit, "rrf_k": settings().rrf_k},
+            {
+                "query": query,
+                "limit": limit,
+                "rrf_k": settings().rrf_k,
+                "owner_id": owner_id,
+            },
         )
         return _candidates(cur.fetchall())
 
 
-def dense_search(conn, query: str, limit: int = 10) -> list[Candidate]:
+def dense_search(
+    conn, query: str, limit: int = 10, owner_id: str | None = None
+) -> list[Candidate]:
     """pgvector retrieval alone, used as an evaluation baseline."""
     from enclave.models.encoders import get_embedder
 
@@ -175,12 +188,15 @@ def dense_search(conn, query: str, limit: int = 10) -> list[Candidate]:
                 "vec": to_vector_literal(vec),
                 "limit": limit,
                 "rrf_k": settings().rrf_k,
+                "owner_id": owner_id,
             },
         )
         return _candidates(cur.fetchall())
 
 
-def hybrid_search(conn, query: str, limit: int | None = None) -> list[Candidate]:
+def hybrid_search(
+    conn, query: str, limit: int | None = None, owner_id: str | None = None
+) -> list[Candidate]:
     """Lexical + dense retrieval fused by RRF.
 
     `conn` is a psycopg connection. Embedding the query is one forward
@@ -200,6 +216,7 @@ def hybrid_search(conn, query: str, limit: int | None = None) -> list[Candidate]
                 "k": cfg.candidates_k,
                 "rrf_k": cfg.rrf_k,
                 "limit": limit or cfg.resolved_rerank_depth,
+                "owner_id": owner_id,
             },
         )
         rows = cur.fetchall()

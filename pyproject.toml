@@ -65,6 +65,7 @@ enclave-eval = "enclave.eval.run:cli"
 enclave-eval-context = "enclave.eval.contextual:cli"
 enclave-api = "enclave.api.main:cli"
 enclave-local = "enclave.api.main:cli_local"
+enclave-create-user = "enclave.auth:cli_create_user"
 
 [build-system]
 requires = ["hatchling"]
